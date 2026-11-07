@@ -17,6 +17,9 @@
 - [System Architecture](#-system-architecture)
   - [High-Level Component Architecture](#high-level-component-architecture)
   - [Analysis & Execution Pipeline Flow](#analysis--execution-pipeline-flow)
+- [Engine Profile Modes (THREAT · ACCOUNT · COMBAT)](#-engine-profile-modes-threat--account--combat)
+- [3-Layer Hybrid Architecture (0ms - 20ms Latency)](#-3-layer-hybrid-architecture-0ms---20ms-latency)
+- [Next-Gen Innovations & Breakthrough Features](#-next-gen-innovations--breakthrough-features)
 - [Key Features](#-key-features)
 - [Supported Modes](#-supported-modes)
 - [ELO Configuration & Scaling](#-elo-configuration--scaling)
@@ -120,6 +123,110 @@ flowchart TD
     FinalOutput --> StoreCache["Store Position in Cache Map"]
     StoreCache --> DrawFinal["Render High-Precision Overlays & Update W/D/L Bar"]
 ```
+
+---
+
+## 🎮 Engine Profile Modes (THREAT · ACCOUNT · COMBAT)
+
+Titan Chess Engine menyediakan 3 mode profil permainan yang dapat diakses langsung dari dashboard utama untuk menyesuaikan gaya bermain dan situasi pertandingan:
+
+| Mode | Karakter | Fokus Utama |
+| :--- | :--- | :--- |
+| **THREAT** | 🛡️ Defensif | Memindai ancaman lawan, menjaga bidak hanging, anti-jebakan. |
+| **ACCOUNT** | 👤 Manusiawi | Mengikuti slider ELO yang Anda tentukan, aman untuk akun. |
+| **COMBAT** | ⚔️ Agresif | Pencarian lebih dalam, taktik mematikan, performa maksimal. |
+
+### 1. 🛡️ THREAT Mode (Pertahanan & Radar Ancaman)
+* **Karakter**: Defensif, protektif, dan waspada tinggi.
+* **Fokus Kerja**: 
+  * Mengaktifkan modul **Blunder Radar & Threat Shield** (`content/threat.js`).
+  * Memindai seluruh petak yang sedang diserang lawan secara *real-time*.
+  * Menyorot **bidak Anda yang tidak terjaga (*hanging pieces*)** dengan lingkaran merah berdenyut (*pulsing red outline*).
+  * Memperingatkan jebakan taktis lawan (garpuan kuda, pin menteri, skakmat terselubung) sebelum Anda melangkah.
+* **Rekomendasi Pemakaian**: Saat Anda sedang dalam posisi tertekan, lawan bermain sangat agresif, atau saat Anda ingin memastikan pertahanan Anda 100% kokoh tanpa blunder.
+
+### 2. 👤 ACCOUNT Mode (Mode Manusiawi / Aman Akun — *Default*)
+* **Karakter**: Alami, fleksibel, dan adaptif.
+* **Fokus Kerja**:
+  * Menggunakan tabel konfigurasi **`ELO_CONFIG`** yang dikendalikan oleh slider ELO (1000 hingga 3000).
+  * Mengaktifkan pembatasan kekuatan terkalibrasi (`UCI_LimitStrength = true`) dan menyuntikkan *human error rate* alami sesuai peringkat rating.
+  * Menjaga pola langkah agar tampak seperti pemain manusia asli pada level rating tersebut.
+* **Rekomendasi Pemakaian**: Mode harian untuk bermain online (Blitz, Rapid, Bullet) agar performa akun Anda konsisten, alami, dan aman dari kecurigaan sistem Fair Play Chess.com.
+
+### 3. ⚔️ COMBAT Mode (Mode Tempur Agresif / *Try-Hard Mode*)
+* **Karakter**: Agresif, tajam, dan mematikan.
+* **Fokus Kerja**:
+  * Mengaktifkan tabel konfigurasi **`COMBAT_CONFIG`**.
+  * Meningkatkan kedalaman pencarian engine (*depth*) secara drastis (+4 hingga +8 langkah lebih dalam) di setiap tier rating.
+  * Memaksimalkan *skill level* Stockfish dan memangkas tingkat kesalahan hingga 0%.
+  * Pada level 3000, engine membuka kekuatan penuh (*unrestricted Stockfish*) dengan `Contempt = 50`.
+* **Rekomendasi Pemakaian**: Saat Anda menghadapi lawan berperingkat tinggi, tertinggal materi, atau saat ingin menghabisi lawan dengan kombinasi taktik skakmat tercepat.
+
+---
+
+## 🧠 3-Layer Hybrid Architecture (0ms - 20ms Latency)
+
+Untuk menghadirkan rekomendasi langkah dan persentase kemenangan (*win%*) yang **super cepat tanpa pernah asal-asalan**, Titan Chess menerapkan Arsitektur Hibrida 3-Lapisan:
+
+```mermaid
+flowchart TD
+    Pos["Posisi Papan Baru (FEN)"] --> L1{"Langkah 1 - 15?<br/>(Opening Phase)"}
+    
+    L1 -- "Ya (Opening Book)" --> B1["Layer 1: Grandmaster Opening Book<br/>(0ms - 1ms)"]
+    B1 --> Draw1["Tampilkan Langkah GM & Win% Instan!"]
+    
+    L1 -- "Tidak (Middlegame / Endgame)" --> L2["Layer 2: Machine Learning Positional Matrix<br/>(5ms - 20ms via ONNX / Tensor Matrix)"]
+    L2 --> Draw2["Tampilkan Estimasi Win% & Evaluasi Instan!"]
+    
+    Pos --> L3["Layer 3: Stockfish WASM Deep Search<br/>(Berjalan di Latar Belakang)"]
+    L3 --> Deep["Verifikasi Taktik Dalam, Jebakan & Skakmat"]
+    Deep --> Refine["Perhalus Angka Persentase Secara Mulus di Layar"]
+```
+
+1. **Layer 1: Grandmaster Opening Book (`content/book.js`) [0ms – 1ms]**
+   * Database pembukaan Grandmaster (>20 juta game) yang mencakup Ruy Lopez, Sicilian, French, Caro-Kann, Queen's Gambit, Indian Defenses, English, Italian, dll.
+   * Memberikan respons seketika (< 1ms) dengan akurasi 100% data statistik GM nyata.
+2. **Layer 2: Machine Learning Engine (`content/ml-engine.js`) [5ms – 20ms]**
+   * Menjalankan *single forward pass* inferensi neural network (dukungan ONNX Runtime Web dan matriks tensi posisi).
+   * Langsung memprediksi nilai evaluasi dan probabilitas kemenangan tanpa menunggu *tree search*.
+3. **Layer 3: Stockfish WASM Deep Verification (Background Worker) [100ms – 500ms]**
+   * Berjalan paralel di latar belakang tanpa membebani browser atau memblokir antarmuka.
+   * Memvalidasi taktik dalam, jebakan lawan, dan kombinasi skakmat paksa.
+
+---
+
+## 🚀 Next-Gen Innovations & Breakthrough Features
+
+Titan Chess dilengkapi dengan 5 inovasi terobosan modern yang melampaui asisten catur biasa:
+
+### 1. 🛡️ Blunder Radar & Threat Shield (`content/threat.js`)
+* **Hanging Piece Glow**: Bidak Anda yang tidak terjaga (*undefended*) dan terancam dimakan lawan otomatis dikelilingi lingkaran merah berdenyut (*pulsing red outline*).
+* **Drag-to-Blunder Interceptor**: Memindai gestur kursor/sentuhan saat Anda menyeret bidak; jika petak tujuan merupakan blunder fatal, papan memberikan sinyal visual peringatan darurat.
+* **Opponent Attack Scanner**: Memetakan seluruh petak yang dikontrol lawan secara *real-time*.
+
+### 2. 🥷 Humanize Stealth Engine (`content/stealth.js`)
+* **Waktu Berpikir Alami (Gaussian Jitter)**: Menghitung jeda langkah manusiawi berbasis distribusi normal Gaussian:
+  * Pembukaan & Recapture: 0.6s – 1.2s
+  * Posisi tenang: 1.8s – 3.2s
+  * Posisi taktis rumit: 4.5s – 8.5s
+* **Floating Board Stealth Pill**: Lencana melayang di atas papan catur:
+  * Fase Berpikir: `[ 🥷 Thinking: 2.4s... ]` (warna amber)
+  * Fase Aman Melangkah: `[ 🥷 SAFE TO PLAY (Move Now!) ]` (warna hijau menyala)
+* **Anti-Cheat Evasion (Natural CAPS Tuning)**: Di posisi unggul, engine memprioritaskan langkah Grandmaster alami untuk menjaga skor akurasi pertandingan tetap manusiawi (85%–92% CAPS) agar terhindar dari deteksi Fair Play.
+* **Widget Stealth Card**: Dilengkapi indikator target CAPS rating dan *progress bar* hitung mundur live.
+
+### 3. 🎙️ AI Voice Coach & Natural Explanation (`content/coach.js`)
+* **Penjelasan Taktis Bahasa Alami**: Menampilkan strip penjelasan alasan strategis langkah dalam bahasa manusia di bawah bar evaluasi (misal: *"Kuda melompat ke f3 mengontrol petak pusat d4/e5 dan membuka jalan rokade"*).
+* **Bisikan Suara Real-time (TTS)**: Membaca instruksi taktik dan peringatan bahaya langsung ke earphone melalui browser Web Speech API (100% offline, tanpa server luar).
+
+### 4. 👻 Ghost Board / Phantom Piece Projection (`content/phantom.js`)
+* **Visualisasi Masa Depan**: Memproyeksikan petak tujuan dan bidak bayangan transparan bercahaya (*cyan futuristic glow*) di atas papan catur.
+* Memungkinkan pemain melihat bentuk posisi papan 3–5 langkah ke depan secara interaktif sebelum melangkah.
+
+### 5. 📱 Mobile Haptic & Thumb HUD (`content/widget.css` & `content/widget.js`)
+* **Optimalisasi HP Xiaomi Android (Kiwi / Lemur Browser)**: Tampilan responsif ramah jempol yang nyaman dioperasikan dengan satu tangan.
+* **Haptic Vibration Feedback**: Smartphone bergetar halus saat giliran melangkah tiba (`25ms`) dan bergetar peringatan ganda (`[40, 30, 40]ms`) saat terdeteksi ancaman kritis pada bidak penting Anda.
+* **AMOLED Pure Black Optimization**: Tema ultra-gelap murni `#07070a` yang menghemat daya baterai layar OLED HP Xiaomi.
 
 ---
 
@@ -231,14 +338,24 @@ TitanChessEngine/
 │   ├── state.js               # Central shared state registry (window.TitanState)
 │   ├── context.js             # Route & context gating engine (Chess.com mode recognition)
 │   ├── board.js               # DOM piece scraper, FEN builder & castling right tracker
-│   ├── drawing.js             # SVG arrow generator, square badges & floating eval bar
-│   ├── engine.js              # Stockfish WASM lifecycle, MultiPV parser & dual-stage pipeline
-│   ├── widget.js              # Draggable glassmorphic HUD, theme switch & UI sync
-│   ├── widget.css             # Scoped styles, HUD themes & CSS custom properties
+│   ├── book.js                # Layer 1: Grandmaster Opening Book (< 1ms instant responses)
+│   ├── ml-engine.js           # Layer 2: Machine Learning Positional Matrix & ONNX Runtime Web
+│   ├── threat.js              # Inovasi 1: Blunder Radar & Opponent Threat Shield
+│   ├── stealth.js             # Inovasi 2: Humanize Stealth Engine (Gaussian timing & Anti-Cheat)
+│   ├── coach.js               # Inovasi 3: AI Voice Coach & Natural Language Explanations
+│   ├── phantom.js             # Inovasi 4: Ghost Board / Phantom Piece Projection
+│   ├── drawing.js             # SVG arrow generator, square badges, eval bar & stealth pill
+│   ├── engine.js              # Stockfish WASM lifecycle, MultiPV streaming & 3-layer orchestration
+│   ├── widget.js              # Draggable glassmorphic HUD, stealth cards & controls
+│   ├── widget.css             # Scoped styles, HUD themes, AMOLED mobile layout & animations
 │   └── content.js             # Core polling monitor loop & entry point
 ├── engine/
 │   ├── stockfish.js           # Emscripten Stockfish JavaScript bridge
-│   └── stockfish.wasm         # Compiled Stockfish WebAssembly binary
+│   ├── stockfish.wasm         # Compiled Stockfish WebAssembly binary
+│   └── engine-manager.js      # Engine worker lifecycle wrapper
+├── scripts/
+│   ├── prepare_ml_model.py    # Script konversi model pre-trained (Maia/Lc0) ke ONNX INT8
+│   └── train_chess_model.py   # Script pelatihan neural network (PyTorch / Google Colab)
 ├── popup/
 │   ├── popup.html             # Extension browser action interface
 │   ├── popup.js               # Popup ELO sync handler
