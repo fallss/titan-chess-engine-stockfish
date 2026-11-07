@@ -120,7 +120,8 @@
             const turn = fen.split(' ')[1] || 'w';
             T.myTurnColor = B.getPlayerColor();
             const ctx = Ctx.getContext();
-            const isAnalysisLike = (ctx === 'analysis' || ctx === 'review' || ctx === 'puzzle' || ctx === 'practice');
+            const isGameOver = !!document.querySelector('.game-over-modal, .game-over-dialog, [class*="game-over"], .board-dialog-component');
+            const isAnalysisLike = (ctx === 'analysis' || ctx === 'review' || ctx === 'puzzle' || ctx === 'practice' || isGameOver);
             const isMyTurn = isAnalysisLike || (turn === T.myTurnColor);
 
             // position changed — new move was made

@@ -47,8 +47,9 @@
         { re: /^https:\/\/(www\.)?chess\.com\/play\/daily(\/|$|\?)/, ctx: 'daily' },
         { re: /^https:\/\/(www\.)?chess\.com\/daily(\/|$|\?)/, ctx: 'daily' },
 
-        // 7. Live Human Matches & Online Play
+        // 7. Live Human Matches & Online Play (including /game/:id)
         { re: /^https:\/\/(www\.)?chess\.com\/game\/live(\/|$|\?)/, ctx: 'live' },
+        { re: /^https:\/\/(www\.)?chess\.com\/game\/\d+(\/|$|\?)/, ctx: 'live' },
         { re: /^https:\/\/(www\.)?chess\.com\/play\/online(\/|$|\?)/, ctx: 'live' },
         { re: /^https:\/\/(www\.)?chess\.com\/live(\/|$|\?)/, ctx: 'live' },
 
@@ -125,6 +126,15 @@
         } else if (!matched && checkBotDom()) {
             matched = true;
             context = 'computer';
+        }
+
+        // Fallback: If URL is on chess.com and a board element exists in DOM, allow game context
+        if (!matched && typeof document !== 'undefined' && typeof document.querySelector === 'function') {
+            const hasBoard = !!document.querySelector('chess-board, wc-chess-board, #board-layout-chessboard, .board');
+            if (hasBoard) {
+                matched = true;
+                context = checkBotDom() ? 'computer' : 'live';
+            }
         }
 
         state.allowed = matched;

@@ -111,6 +111,12 @@ check('puzzle rush', r.allowed + ':' + r.context, 'true:puzzle');
 r = setPage('https://www.chess.com/game/live/123456789');
 check('live human game ALLOWED', r.allowed + ':' + r.context, 'true:live');
 
+r = setPage('https://www.chess.com/game/186710743490');
+check('direct game ID URL (/game/:id) ALLOWED', r.allowed + ':' + r.context, 'true:live');
+
+r = setPage('https://www.chess.com/game/186710743490?tab=analysis');
+check('direct game ID URL w/ query ALLOWED', r.allowed + ':' + r.context, 'true:live');
+
 r = setPage('https://www.chess.com/game/daily/123456789');
 check('daily human game ALLOWED', r.allowed + ':' + r.context, 'true:daily');
 

@@ -53,8 +53,16 @@
     function getPlayerColor() {
         const board = findBoard();
         if (!board) return T.playerColor || 'w';
-        if (board.classList.contains('flipped')) return T.playerColor = 'b';
 
+        // 1. Check orientation attribute (modern chess-board custom element)
+        const orientationAttr = board.getAttribute('orientation');
+        if (orientationAttr === 'black') return T.playerColor = 'b';
+        if (orientationAttr === 'white') return T.playerColor = 'w';
+
+        // 2. Check class or boolean attribute flipped
+        if (board.classList.contains('flipped') || board.hasAttribute('flipped')) return T.playerColor = 'b';
+
+        // 3. Fallback: coordinate labels ('1' at bottom = white, '8' at bottom = black)
         const coords = board.querySelectorAll('.coordinate, .coords, [class*="coordinate"]');
         for (let c of coords) {
             if (c.textContent.trim() === '1') {
