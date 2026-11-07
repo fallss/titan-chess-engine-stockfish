@@ -133,6 +133,22 @@
                 T.pvResults = null;
                 D.clearArrows();
                 D.clearMovePct();
+                if (D.clearThreats) D.clearThreats();
+                if (window.TitanPhantom) window.TitanPhantom.clearPhantom();
+
+                // Inovasi 1 & 5: Threat Radar & Haptic Feedback
+                if (T.threatRadarOn && window.TitanThreat) {
+                    const threats = window.TitanThreat.analyzeThreats(fen, T.myTurnColor);
+                    if (threats && D.drawThreats) D.drawThreats(threats);
+                    if (T.hapticFeedbackOn && threats && threats.hanging && threats.hanging.length > 0) {
+                        try { if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate([40, 30, 40]); } catch (e) {}
+                    }
+                }
+
+                // Inovasi 5: Mobile Haptic on our turn arrival
+                if (isMyTurn && T.hapticFeedbackOn) {
+                    try { if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(25); } catch (e) {}
+                }
 
                 // analyze on our turn, or pre-analyze in queue mode
                 if (isMyTurn) {

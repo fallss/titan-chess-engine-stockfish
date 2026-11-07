@@ -237,6 +237,10 @@
                                 <span class="eval-pct eval-pct-black">Black <b id="eval-pct-black">50%</b></span>
                             </div>
                             <div class="eval-hint" id="eval-hint">Waiting for engine analysis…</div>
+                            <div class="titan-coach-strip" id="titan-coach-strip" style="display:none">
+                                <span class="titan-coach-icon">💡</span>
+                                <span id="titan-coach-text">Waiting for tactical analysis…</span>
+                            </div>
                         </div>
                         <div class="eval-section">
                             <div class="section-label">EVALUATION BAR</div>
@@ -271,6 +275,10 @@
                     <div class="tool-icon" data-tool="color" title="Arrow Color">🎨</div>
                     <div class="tool-icon active" data-tool="eval" title="Eval Bar">📊</div>
                     <div class="tool-icon active" data-tool="movepct" title="Move Win%">💯</div>
+                    <div class="tool-icon active" data-tool="threat" title="Inovasi 1: Threat Radar">🛡️</div>
+                    <div class="tool-icon" data-tool="stealth" title="Inovasi 2: Humanize Stealth">🥷</div>
+                    <div class="tool-icon" data-tool="coach" title="Inovasi 3: Voice Coach">🎙️</div>
+                    <div class="tool-icon active" data-tool="phantom" title="Inovasi 4: Ghost Board">👻</div>
                     <div class="tool-icon" data-tool="theme" title="Themes">🌈</div>
                     <div class="tool-icon" data-tool="settings" title="Settings">⚙️</div>
                     <div class="tool-icon" data-tool="upgrade" title="Upgrade to Premium">⭐</div>
@@ -582,6 +590,25 @@
                     // redraw badges immediately if any exist
                     if (D.drawMovePct && T.topMoves.length) D.drawMovePct();
                     showStatusNotification(T.movePctOn ? 'MOVE WIN%: ON' : 'MOVE WIN%: OFF');
+                } else if (tool === 'threat') {
+                    T.threatRadarOn = !T.threatRadarOn;
+                    this.classList.toggle('active', T.threatRadarOn);
+                    showStatusNotification(T.threatRadarOn ? 'THREAT RADAR: ON' : 'THREAT RADAR: OFF');
+                    if (!T.threatRadarOn && D.clearThreats) D.clearThreats();
+                } else if (tool === 'stealth') {
+                    T.stealthOn = !T.stealthOn;
+                    this.classList.toggle('active', T.stealthOn);
+                    showStatusNotification(T.stealthOn ? 'STEALTH MODE: ON' : 'STEALTH MODE: OFF');
+                } else if (tool === 'coach') {
+                    T.voiceCoachOn = !T.voiceCoachOn;
+                    this.classList.toggle('active', T.voiceCoachOn);
+                    if (window.TitanCoach) window.TitanCoach.setVoiceCoach(T.voiceCoachOn);
+                    showStatusNotification(T.voiceCoachOn ? 'VOICE COACH: ON' : 'VOICE COACH: OFF');
+                } else if (tool === 'phantom') {
+                    T.phantomOn = !T.phantomOn;
+                    this.classList.toggle('active', T.phantomOn);
+                    showStatusNotification(T.phantomOn ? 'GHOST BOARD: ON' : 'GHOST BOARD: OFF');
+                    if (!T.phantomOn && window.TitanPhantom) window.TitanPhantom.clearPhantom();
                 } else if (tool === 'color') {
                     // cycle through colors on each click
                     const colors = ['#00f2ff', '#00ff88', '#ff00ff', '#ffff00', '#ff8800'];
@@ -993,9 +1020,21 @@
         if (D.renderBoardEval) D.renderBoardEval(wdl, scoreText, hasEval);
     }
 
+    function updateCoachText(text) {
+        const widget = document.getElementById('titan-widget');
+        if (!widget) return;
+        const strip = widget.querySelector('#titan-coach-strip');
+        const textEl = widget.querySelector('#titan-coach-text');
+        if (textEl && text) {
+            textEl.textContent = text;
+            if (strip) strip.style.display = 'flex';
+        }
+    }
+
     // public API — other modules call these to update the widget
     window.TitanWidget = {
         createFloatingWidget, updateStatus, showStatusNotification,
-        updateInfoDisplay, updateQueueDisplay, updateEvalDisplay, setContextBlocked
+        updateInfoDisplay, updateQueueDisplay, updateEvalDisplay, setContextBlocked,
+        updateCoachText
     };
 })();

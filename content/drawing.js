@@ -433,5 +433,52 @@
         if (movePctOverlay) movePctOverlay.innerHTML = '';
     }
 
-    window.TitanDraw = { draw, clearArrows, initCanvas, renderBoardEval, setBoardEval, drawMovePct, clearMovePct };
+    // ============================================================
+    // Threat Radar: Hanging pieces & danger squares
+    // ============================================================
+    let threatOverlay = null;
+
+    function ensureThreatOverlay() {
+        const board = B.findBoard();
+        if (!board) return null;
+        if (threatOverlay && board.contains(threatOverlay)) return threatOverlay;
+        if (threatOverlay && threatOverlay.parentNode) {
+            try { threatOverlay.parentNode.removeChild(threatOverlay); } catch (e) {}
+        }
+        threatOverlay = document.createElement('div');
+        threatOverlay.className = 'titan-threat-overlay';
+        threatOverlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:99;';
+        board.style.position = board.style.position || 'relative';
+        board.appendChild(threatOverlay);
+        return threatOverlay;
+    }
+
+    function drawThreats(threatData) {
+        const overlay = ensureThreatOverlay();
+        if (!overlay) return;
+        overlay.innerHTML = '';
+        if (!threatData || !threatData.hanging || !threatData.hanging.length) return;
+
+        const orientation = B.getBoardRect() ? B.getBoardRect().orientation : 'white';
+        threatData.hanging.forEach(item => {
+            const tf = sqToTransform(item.square, orientation);
+            if (!tf) return;
+            const el = document.createElement('div');
+            el.className = 'titan-threat-hanging';
+            el.style.transform = `translate(${tf.xPct}%,${tf.yPct}%)`;
+            const pulse = document.createElement('div');
+            pulse.className = 'titan-threat-hanging-pulse';
+            el.appendChild(pulse);
+            overlay.appendChild(el);
+        });
+    }
+
+    function clearThreats() {
+        if (threatOverlay) threatOverlay.innerHTML = '';
+    }
+
+    window.TitanDraw = {
+        draw, clearArrows, initCanvas, renderBoardEval, setBoardEval,
+        drawMovePct, clearMovePct, drawThreats, clearThreats
+    };
 })();

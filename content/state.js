@@ -77,6 +77,13 @@ window.TitanState = {
     topMoves: [],          // current top moves: [{from, to, winPct}] sorted best first
     pvResults: null,       // internal buffer during analysis (cleared on new game)
 
+    // Inovasi 1 - 5 Next-Gen features
+    threatRadarOn: true,   // Inovasi 1: Blunder Radar & Threat Shield
+    stealthOn: false,      // Inovasi 2: Humanize Stealth Engine (Anti-Cheat)
+    voiceCoachOn: false,   // Inovasi 3: AI Voice Coach & Natural Explanation
+    phantomOn: true,       // Inovasi 4: Ghost Board / Phantom Piece Projection
+    hapticFeedbackOn: true,// Inovasi 5: Mobile Haptic & Thumb HUD (Xiaomi)
+
     // castling tracking — set to true once king/rook leaves
     // starting square during a game. reset on new game detection.
     // this prevents false castling rights in the FEN when a piece

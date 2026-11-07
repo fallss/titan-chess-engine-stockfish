@@ -595,10 +595,33 @@
         // lines, but the board overlay stays clean.
         if (!T.engineOn) return;
 
+        // Humanize Stealth move selection
+        let effectiveMove = move;
+        if (final !== false && T.stealthOn && window.TitanStealth && T.topMoves && T.topMoves.length > 1) {
+            const stealthMove = window.TitanStealth.selectHumanizedMove(T.topMoves, T.currentElo);
+            if (stealthMove) effectiveMove = stealthMove;
+        }
+
+        // AI Voice Coach commentary & explanation
+        if (final !== false && window.TitanCoach) {
+            const expl = window.TitanCoach.explainMove(effectiveMove, T.currentFen);
+            if (window.TitanWidget && window.TitanWidget.updateCoachText) {
+                window.TitanWidget.updateCoachText(expl);
+            }
+            if (T.voiceCoachOn) {
+                window.TitanCoach.speakCue(expl);
+            }
+        }
+
+        // Ghost Board Phantom projection
+        if (T.phantomOn && window.TitanPhantom && effectiveMove && effectiveMove.length >= 4) {
+            window.TitanPhantom.showPhantom(effectiveMove.slice(0, 2), effectiveMove.slice(2, 4));
+        }
+
         // always store the result — monitor() will decide
         // whether to display it based on whose turn it is.
-        T.pendingArrows = [{ move }];
-        T.arrows = [{ move }];
+        T.pendingArrows = [{ move: effectiveMove }];
+        T.arrows = [{ move: effectiveMove }];
         T.forceRedraw = true;
         D.draw(true);
         // render move% badges alongside the arrow (monitor clears

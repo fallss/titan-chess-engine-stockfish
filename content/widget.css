@@ -1587,3 +1587,71 @@
     display: none;
 }
 
+/* ==================== INOVASI 1-5: NEXT-GEN STYLES ==================== */
+
+/* Threat Radar - Pulsing Red Outline on Hanging Pieces */
+.titan-threat-hanging {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 12.5%;
+    height: 12.5%;
+    pointer-events: none;
+    z-index: 100;
+}
+.titan-threat-hanging-pulse {
+    width: 90%;
+    height: 90%;
+    border-radius: 50%;
+    margin: 5%;
+    border: 3px solid #ff3366;
+    background: rgba(255, 51, 102, 0.22);
+    box-shadow: 0 0 12px #ff3366;
+    animation: titan-threat-glow 1.2s infinite alternate;
+}
+
+@keyframes titan-threat-glow {
+    0% { transform: scale(0.92); opacity: 0.6; }
+    100% { transform: scale(1.04); opacity: 1; }
+}
+
+@keyframes titan-ghost-pulse {
+    0% { transform: scale(0.94); opacity: 0.5; }
+    100% { transform: scale(1.0); opacity: 0.9; }
+}
+
+/* AI Tactical Coach Text Strip */
+.titan-coach-strip {
+    margin: 6px 0;
+    padding: 6px 10px;
+    background: rgba(0, 242, 255, 0.08);
+    border: 1px solid rgba(0, 242, 255, 0.25);
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.35;
+    color: #bbf8ff;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.titan-coach-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+/* Mobile & Xiaomi AMOLED Responsive Optimizations */
+@media (max-width: 768px) {
+    #titan-widget {
+        max-width: 94vw !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.85) !important;
+    }
+    #titan-widget .content {
+        padding: 8px !important;
+    }
+    .titan-board-eval {
+        height: 18px !important;
+    }
+}
+
+
