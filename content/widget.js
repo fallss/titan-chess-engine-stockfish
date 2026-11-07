@@ -951,7 +951,7 @@
         const scoreEl = widget.querySelector('#eval-score');
         if (scoreEl) scoreEl.textContent = scoreText;
         const bestEl = widget.querySelector('#eval-best');
-        if (bestEl) bestEl.textContent = (!ctxBlocked && T.evalDepth !== null) ? `Depth ${T.evalDepth}` : '—';
+        if (bestEl) bestEl.textContent = (!ctxBlocked && T.evalDepth !== null) ? (typeof T.evalDepth === 'number' ? `Depth ${T.evalDepth}` : String(T.evalDepth)) : '—';
         applyToBar(
             widget.querySelector('#eval-bar-white'),
             widget.querySelector('#eval-bar-draw'),

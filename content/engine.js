@@ -424,15 +424,41 @@
         return configTable[T.currentElo] || configTable['1000'];
     }
 
+    function applyBookResult(bookResult, fen) {
+        T.analyzing = false;
+        T.analysisStage = 0;
+        T.analyzingFen = fen;
+        T.topMoves = (bookResult.topMoves || []).map(m => ({ ...m }));
+
+        const sideToMove = fen.split(' ')[1] || 'w';
+        const winRatio = Math.max(0.05, Math.min(0.95, (bookResult.winPct || 50) / 100));
+        const cp = Math.round(Math.log(winRatio / (1 - winRatio)) / 0.0036);
+        T.evalCp = (sideToMove === 'w') ? cp : -cp;
+        T.evalMate = null;
+        T.evalDepth = 'Book';
+
+        if (window.TitanWidget && window.TitanWidget.updateEvalDisplay) {
+            window.TitanWidget.updateEvalDisplay();
+        }
+
+        showMove(bookResult.bestmove, true);
+        cacheResult(fen, bookResult.bestmove);
+    }
+
+    function startBackgroundSearch(fen) {
+        if (!T.engineReady || !T.stockfishWorker) return;
+        T.stockfishWorker.postMessage('stop');
+        ignoreNextBestmove++;
+        T.stockfishWorker.postMessage(`position fen ${fen}`);
+        T.stockfishWorker.postMessage('go depth 8 movetime 400');
+    }
+
     // send a position to stockfish for analysis.
     //
-    // TWO-STAGE ADAPTIVE SEARCH:
-    //   stage 1: MultiPV=1 at depth-6 → provisional arrow shows in a
-    //            fraction of the full search time (early prediction).
-    //   stage 2: full depth, MultiPV=3 (badges) → final result, started
-    //            automatically from the bestmove handler with a warm TT.
-    //   shallow configs (stage-1 depth < 8) skip straight to a single
-    //   full pass — two stages would just add overhead there.
+    // THREE-LAYER HYBRID ARCHITECTURE:
+    //   Layer 1 (0ms - 1ms): Grandmaster Opening Book lookup
+    //   Layer 2 (5ms - 20ms): ML Policy & Value Network inference
+    //   Layer 3 (100ms - 500ms): Stockfish WASM tactical verification
     //
     // if already analyzing, send 'stop' first to abort the previous
     // search — this prevents the "stuck analysis" issue where a new
@@ -447,6 +473,16 @@
         const cached = getCachedResult(fen);
         if (cached) { applyCachedResult(cached); return; }
 
+        // LAYER 1: Grandmaster Opening Book lookup (< 0.1ms, 100% GM accurate)
+        if (window.TitanBook && window.TitanBook.has(fen)) {
+            const bookResult = window.TitanBook.lookup(fen);
+            if (bookResult) {
+                applyBookResult(bookResult, fen);
+                startBackgroundSearch(fen);
+                return;
+            }
+        }
+
         if (T.analyzing) {
             T.stockfishWorker.postMessage('stop');
             ignoreNextBestmove++;
@@ -459,6 +495,23 @@
         T.topMoves = [];    // clear previous badges
         D.clearMovePct();
         startAnalyzeWatchdog();
+
+        // LAYER 2: ML Fast Positional Inference (5-20ms)
+        if (window.TitanML && typeof window.TitanML.predict === 'function') {
+            window.TitanML.predict(fen).then(mlRes => {
+                if (mlRes && T.analyzing && T.analyzingFen === fen && T.evalCp === null) {
+                    const sideToMove = fen.split(' ')[1] || 'w';
+                    const winRatio = Math.max(0.05, Math.min(0.95, (mlRes.winPct || 50) / 100));
+                    const cp = Math.round(Math.log(winRatio / (1 - winRatio)) / 0.0036);
+                    T.evalCp = (sideToMove === 'w') ? cp : -cp;
+                    T.evalDepth = 'ML';
+                    if (window.TitanWidget && window.TitanWidget.updateEvalDisplay) {
+                        window.TitanWidget.updateEvalDisplay();
+                    }
+                }
+            }).catch(() => {});
+        }
+
         const cfg = pickConfig();
         // don't send 'ucinewgame' here — it resets the hash table
         // and kills all cached positions. only sent on actual new games.

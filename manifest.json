@@ -16,6 +16,8 @@
         "content/state.js",
         "content/context.js",
         "content/board.js",
+        "content/book.js",
+        "content/ml-engine.js",
         "content/drawing.js",
         "content/engine.js",
         "content/widget.js",
