@@ -1,236 +1,284 @@
-# Titan Chess FREE
+# ♟️ Titan Chess Engine
 
-Open-source chess analysis extension for [chess.com](https://chess.com).
-Powered by Stockfish WASM — runs entirely in your browser, no server needed.
+> **High-Performance Client-Side Chess Assistant & Real-Time Evaluation Overlay for Chess.com**  
+> Powered by an embedded Stockfish WebAssembly (WASM) engine — zero servers, ultra-low latency, 100% private.
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![Manifest V3](https://img.shields.io/badge/manifest-v3-green)
-![Engine](https://img.shields.io/badge/engine-Stockfish%20WASM-orange)
-![License](https://img.shields.io/badge/license-MIT-lightgrey)
+[![Version](https://img.shields.io/badge/version-1.0.0-00f2ff?style=for-the-badge&logo=github)](https://github.com)
+[![Manifest](https://img.shields.io/badge/manifest-v3-00ff88?style=for-the-badge&logo=googlechrome)](https://developer.chrome.com/docs/extensions/mv3/intro/)
+[![Engine](https://img.shields.io/badge/engine-Stockfish%20WASM-ff8800?style=for-the-badge&logo=webassembly)](https://stockfishchess.org/)
+[![License](https://img.shields.io/badge/license-MIT-blueviolet?style=for-the-badge)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Chrome%20%7C%20Edge%20%7C%20Brave%20%7C%20Android-lightgrey?style=for-the-badge)](https://chess.com)
 
 ---
 
-## Overview
+## 📑 Table of Contents
 
-Titan Chess FREE is a browser extension that overlays move suggestions on chess.com games using a local Stockfish engine. Everything runs client-side — no accounts, no servers, no data collection.
+- [Overview](#-overview)
+- [System Architecture](#-system-architecture)
+  - [High-Level Component Architecture](#high-level-component-architecture)
+  - [Analysis & Execution Pipeline Flow](#analysis--execution-pipeline-flow)
+- [Key Features](#-key-features)
+- [Supported Modes](#-supported-modes)
+- [ELO Configuration & Scaling](#-elo-configuration--scaling)
+- [Engine Benchmark Metrics](#-engine-benchmark-metrics)
+- [Installation Guide](#-installation-guide)
+- [Project Directory Layout](#-project-directory-layout)
+- [Development & Verification](#-development--verification)
+- [Security & Privacy](#-security--privacy)
+- [License](#-license)
 
-### Key Features
+---
 
-- **Local Stockfish Engine** — Runs Stockfish via WebAssembly in a Blob Worker, fully offline
-- **14 ELO Levels** — Bronze (1000) through Stockfish (3000) with calibrated skill/depth settings
-- **Combat Mode** — Higher depth and skill for each ELO level when you need an edge
-- **Queue Mode** — Pre-analyzes during opponent's turn for faster suggestions
-- **Arrow & Highlight Modes** — Visual move suggestions via DOM injection (works on desktop and mobile)
-- **5 Themes** — Dark, Light, Purple, Green, Orange
-- **Draggable Widget** — Floating dashboard with tabbed interface
-- **Settings Persistence** — All preferences saved via `chrome.storage`
-- **Hash Table Caching** — 16MB/32MB transposition table for faster repeated analysis
-- **Smart Time Management** — High ELO levels use movetime caps to balance quality and speed
-- **Castling Tracking** — Detects when king/rook have moved to generate accurate FEN castling rights
-- **Mobile Compatible** — Works on mobile browsers that support extensions (e.g. Lemur Browser)
+## 🌟 Overview
 
-## Installation
+**Titan Chess Engine** is a client-side Chromium extension (Manifest V3) built to provide real-time positional insights, move suggestions, and win/draw/loss probability metrics across all Chess.com environments.
 
-### Chrome / Edge / Brave / Lemur (Android)
+Unlike traditional cloud-assisted bots, Titan Chess packages the full **Stockfish C++ engine compiled to WebAssembly (WASM)** and instantiates it inside an isolated in-memory **Blob Web Worker**. All positional parsing, transposition table caching, and minimax tree searches execute locally on the user's hardware.
 
-1. Download or clone this repository
-2. Open `chrome://extensions` (or `edge://extensions`)
-3. Enable **Developer mode** (toggle in top-right)
-4. Click **Load unpacked**
-5. Select the project folder
-6. Navigate to [chess.com](https://chess.com) and start a game
+---
 
-## Project Structure
+## 🏛️ System Architecture
 
+### High-Level Component Architecture
+
+```mermaid
+flowchart TD
+    subgraph Browser ["Web Browser Environment (Chrome / Brave / Edge)"]
+        subgraph ChessPage ["Chess.com DOM Environment"]
+            BoardDOM["Chess Board DOM Element<br/>('chess-board', 'wc-chess-board')"]
+            PlayerCard["Player Cards & Opponent Badges<br/>(DOM metadata)"]
+            InjectedOverlay["Injected Overlays<br/>(.titan-overlay, SVG Arrows, Win% Badges)"]
+            EvalBar["Floating W/D/L Eval Bar<br/>(.titan-board-eval)"]
+        end
+
+        subgraph ExtensionRuntime ["Titan Content Script Pipeline (MV3)"]
+            State["window.TitanState<br/>(Central Runtime Store)"]
+            ContextMgr["TitanContext<br/>(Mode & Route Detection)"]
+            BoardParser["TitanBoard<br/>(Piece Class Scraper & FEN Generator)"]
+            Drawing["TitanDraw<br/>(DOM SVG Injection & ViewBox Math)"]
+            WidgetUI["TitanWidget<br/>(Floating Glassmorphic Control HUD)"]
+            MainLoop["content.js Monitor Loop<br/>(100ms Polling Tick)"]
+        end
+
+        subgraph WorkerSandBox ["Dedicated Web Worker Thread"]
+            BlobWorker["Blob-Instantiated Worker<br/>(URL.createObjectURL)"]
+            StockfishWASM["Stockfish Engine Core<br/>(WASM Bytecode + UCI Protocol)"]
+            TranspositionTable["16MB / 32MB Hash Table<br/>(Position Cache)"]
+        end
+
+        StorageAPI[("chrome.storage.local<br/>(User Preferences & ELO State)")]
+    end
+
+    BoardDOM -->|DOM Scrape| BoardParser
+    PlayerCard -->|DOM Check| ContextMgr
+    ContextMgr -->|Active Context| MainLoop
+    BoardParser -->|FEN & Castling Rights| MainLoop
+    MainLoop <-->|Read / Mutate| State
+    MainLoop -->|Position Analysis Request| BlobWorker
+    BlobWorker <--> StockfishWASM
+    StockfishWASM <--> TranspositionTable
+    BlobWorker -->|UCI info / bestmove stream| MainLoop
+    MainLoop -->|Render Commands| Drawing
+    Drawing -->|Inject Elements| InjectedOverlay
+    Drawing -->|Anchor Viewport| EvalBar
+    WidgetUI <-->|Control Mode / ELO / Theme| State
+    WidgetUI <-->|Sync State| StorageAPI
 ```
-├── manifest.json              # Extension config (MV3)
+
+---
+
+### Analysis & Execution Pipeline Flow
+
+```mermaid
+flowchart TD
+    Start["Monitor Tick (every 100ms)"] --> CheckContext{"Context Gate Valid?"}
+    
+    CheckContext -- "No (Non-game / External URL)" --> Idle["Clear Overlays & Enter Standby"]
+    CheckContext -- "Yes (Game / Analysis Mode)" --> ReadBoard["Scrape Board Pieces & Last Move Highlight"]
+    
+    ReadBoard --> MakeFEN["Generate Standard FEN String & Verify Castling"]
+    MakeFEN --> PosChanged{"Has Position Changed?"}
+    
+    PosChanged -- "No" --> RestoreArrows{"Is it My Turn & No Arrow Visible?"}
+    RestoreArrows -- "Yes" --> ShowCached["Redraw Cached Best Move"]
+    RestoreArrows -- "No" --> WaitNext["Wait for Next Monitor Tick"]
+    
+    PosChanged -- "Yes" --> CheckTurn{"Turn Assessment<br/>(Analysis Mode or Player's Turn?)"}
+    
+    CheckTurn -- "Opponent's Turn & Queue ON" --> PreAnalyze["Pre-Analyze at Reduced Depth"]
+    CheckTurn -- "Opponent's Turn & Queue OFF" --> ClearOverlays["Clear Board Overlays"]
+    CheckTurn -- "Player's Turn / Analysis Mode" --> CheckCache{"Position in 64-slot FIFO Cache?"}
+    
+    CheckCache -- "Cache Hit (0ms)" --> InstantDraw["Instantly Render Arrow & Badges"]
+    CheckCache -- "Cache Miss" --> Stage1["Stage 1: MultiPV=1 Fast Provisional Search"]
+    
+    Stage1 --> ProvBestMove["Emit Provisional Best Move (<150ms)"]
+    ProvBestMove --> DrawProvisional["Render Provisional Target Arrow"]
+    DrawProvisional --> Stage2["Stage 2: MultiPV=3 Deep Evaluation (Warm Hash)"]
+    
+    Stage2 --> FinalOutput["Final Best Move + Candidate Move Win% Badges + Centipawn Score"]
+    FinalOutput --> StoreCache["Store Position in Cache Map"]
+    StoreCache --> DrawFinal["Render High-Precision Overlays & Update W/D/L Bar"]
+```
+
+---
+
+## ⚡ Key Features
+
+| Capability | Specification | Architectural Advantage |
+| :--- | :--- | :--- |
+| **Local WASM Worker** | Native Stockfish 16/17 compiled to WASM | Zero cloud dependencies; immune to server outages or network lag. |
+| **Two-Stage Adaptive Search** | Stage 1 (MultiPV=1) + Stage 2 (MultiPV=3) | Renders instant tactical arrows in <150ms, then deepens for exact win% evaluation. |
+| **DOM-Injected SVG Rendering** | Percentage-based CSS transform mapping | Immune to DPR scaling and viewport resizing on both desktop and mobile. |
+| **SPA Self-Healing** | Real-time DOM reconciliation | Automatically detects board remounts across Chess.com route changes without reload. |
+| **Live W/D/L Eval Strip** | Lichess-calibrated logistic probability curve | Visualizes exact White/Draw/Black winning probabilities beneath the board. |
+| **Multi-PV Square Badges** | Top-3 moves with calculated Win% | Direct visual badges (★ best move, winning green, neutral grey, losing red). |
+| **Castling Vector Guard** | King/Rook origin square tracker | Prevents invalid FEN castling tags after pieces move away and return. |
+| **14-Tier ELO Scaling** | Bronze (1000) through Stockfish (3000) | UCI LimitStrength combined with humanized error perturbation and movetime caps. |
+
+---
+
+## 🎯 Supported Modes
+
+The extension dynamically classifies and adapts to every Chess.com sub-environment:
+
+- **Play vs Computer**: Dedicated bot pages (`/play/computer`, `/game/computer`) and custom practice matches (`/practice/custom`).
+- **Live Human Match**: Standard rated/unrated games (`/game/live`, `/play/online`, `/live`).
+- **Daily Chess**: Correspondence matches (`/game/daily`, `/play/daily`).
+- **Game Review**: Post-match analysis reviews (`/game/review/:id` and `/game/:id/review`).
+- **Analysis Board**: Freeboard exploration (`/analysis`) with automatic multi-turn evaluation for both White and Black moves.
+- **Practice & Drills**: Skill trainers (`/practice`, `/drills`).
+- **Puzzles & Puzzle Rush**: Tactical puzzles (`/puzzles`, `/puzzle-rush`, `/battle`).
+
+---
+
+## ⚙️ ELO Configuration & Scaling
+
+Engine performance is mathematically regulated using Stockfish's internal `UCI_LimitStrength`, `UCI_Elo`, and search bounds:
+
+| Tier | Badge | Skill Level | Target Depth | UCI ELO | Error Rate | Movetime Cap |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: |
+| **1000** | BRONZE | 1 | 5 | 800 | 30% | — |
+| **1200** | BRONZE+ | 3 | 7 | 1100 | 22% | — |
+| **1300** | SILVER | 5 | 8 | 1250 | 18% | — |
+| **1400** | SILVER+ | 7 | 9 | 1350 | 14% | — |
+| **1500** | SILVER++ | 9 | 10 | 1450 | 10% | — |
+| **1600** | GOLD | 11 | 11 | 1550 | 8% | — |
+| **1700** | GOLD+ | 13 | 12 | 1650 | 6% | — |
+| **1800** | GOLD++ | 15 | 13 | 1750 | 4% | — |
+| **1900** | EXPERT | 17 | 14 | 1850 | 3% | — |
+| **2000** | MASTER | 18 | 16 | 2000 | 2% | — |
+| **2200** | IM | 19 | 18 | 2200 | 1% | — |
+| **2500** | GM | 20 | 20 | 2500 | 0.5% | 5,000 ms |
+| **2800** | SUPER GM | 20 | 20 | 2800 | 0.0% | 6,000 ms |
+| **3000** | STOCKFISH | 20 | 22+ | Unlimited | 0.0% | 3,000 ms |
+
+> *Note: In **Level 3000 (STOCKFISH)**, `UCI_LimitStrength` is set to `false`, activating raw unconstrained Stockfish WASM execution with `Contempt = 50` and expanded Transposition Table allocation.*
+
+---
+
+## 📊 Engine Benchmark Metrics
+
+Verified benchmark runs on Linux x86_64 across 5 standard tactical and strategic test positions (`movetime 1000ms`):
+
+```text
+=== TITAN CHESS — Stockfish WASM Benchmark ===
+mode         : movetime 1000ms
+boot latency : 279 ms (Worker spawn → UCI ready)
+
+ pos  name          depth   nodes       nps       eng.ms  wall.ms  score    bestmove
+ ---- ------------- ------- ---------- ---------- ------- ------- -------- --------
+  1    opening       19      1.87 M     1.87 M     1001    1003    +1.16    e2e4
+  2    middlegame    18      1.50 M     1.50 M     1001    1004    -2.15    f1b5
+  3    tactics       18      1.89 M     1.89 M     1001    1003    +3.60    a2a4
+  4    endgame       36      8.92 M     8.91 M     1001    1002    +0.00    e3f3
+  5    queens        21      3.15 M     3.14 M     1001    1004    +17.33   d4b6
+
+  Average NPS      : 3.46 M nodes/sec
+  Average Wall-Time: 1003 ms / move
+  Error Rate       : 0 / 5 (100% stable)
+```
+
+---
+
+## 🚀 Installation Guide
+
+### Chrome / Brave / Edge / Chromium
+
+1. Clone or download this repository:
+   ```bash
+   git clone https://github.com/your-username/titan-chess-engine.git
+   ```
+2. Open your browser and navigate to the Extensions management page:
+   - **Chrome**: `chrome://extensions`
+   - **Brave**: `brave://extensions`
+   - **Edge**: `edge://extensions`
+3. Toggle on **Developer mode** in the top-right corner.
+4. Click **Load unpacked** (*Muat yang belum dibongkar*).
+5. Select the `TitanChessEngine` root directory.
+6. Open [Chess.com](https://www.chess.com) — the floating HUD will initialize within ~1 second after board detection.
+
+---
+
+## 📁 Project Directory Layout
+
+```text
+TitanChessEngine/
+├── manifest.json              # Chrome Manifest V3 configuration & permission mapping
 ├── background/
-│   └── service-worker.js      # Background script (settings relay)
+│   └── service-worker.js      # Background state router & cross-tab message dispatcher
 ├── content/
-│   ├── state.js               # Shared runtime state (window.TitanState)
-│   ├── board.js               # Board detection, FEN parser, castling tracking
-│   ├── drawing.js             # DOM-injected arrow/highlight rendering
-│   ├── engine.js              # Stockfish WASM engine wrapper
-│   ├── widget.js              # Floating widget UI & event handlers
-│   ├── content.js             # Main loop, message handler, boot sequence
-│   └── widget.css             # Widget styles with CSS custom properties
+│   ├── state.js               # Central shared state registry (window.TitanState)
+│   ├── context.js             # Route & context gating engine (Chess.com mode recognition)
+│   ├── board.js               # DOM piece scraper, FEN builder & castling right tracker
+│   ├── drawing.js             # SVG arrow generator, square badges & floating eval bar
+│   ├── engine.js              # Stockfish WASM lifecycle, MultiPV parser & dual-stage pipeline
+│   ├── widget.js              # Draggable glassmorphic HUD, theme switch & UI sync
+│   ├── widget.css             # Scoped styles, HUD themes & CSS custom properties
+│   └── content.js             # Core polling monitor loop & entry point
 ├── engine/
-│   ├── stockfish.js           # Stockfish JS (compiled from C++)
-│   └── stockfish.wasm         # Stockfish WebAssembly binary
+│   ├── stockfish.js           # Emscripten Stockfish JavaScript bridge
+│   └── stockfish.wasm         # Compiled Stockfish WebAssembly binary
 ├── popup/
-│   ├── popup.html             # Extension popup page
-│   ├── popup.js               # Popup logic
-│   └── popup.css              # Popup styles
-└── icons/
-    ├── icon.svg
-    ├── icon16.png
-    ├── icon48.png
-    └── icon128.png
+│   ├── popup.html             # Extension browser action interface
+│   ├── popup.js               # Popup ELO sync handler
+│   └── popup.css              # Action popup styling
+├── bench/
+│   ├── engine-bridge.js       # Headless CLI bridge for Stockfish WASM
+│   ├── run-benchmark.js       # Multi-position performance & NPS benchmarking suite
+│   ├── test-context-gating.js # Automated regression suite for URL & DOM context classification
+│   └── test-leak-gates.js     # Sandbox verification for context gate security & protection
+└── icons/                     # Extension branding icons
 ```
-
-### Module Load Order
-
-Files are loaded in this exact order (defined in `manifest.json`):
-
-```
-state.js → board.js → drawing.js → engine.js → widget.js → content.js
-```
-
-All modules share state through `window.TitanState`. Each module exposes its API on `window.Titan*` (e.g. `window.TitanEngine`, `window.TitanBoard`).
-
-## Architecture
-
-### How It Works
-
-1. **Board Detection** (`board.js`) — Scrapes chess.com's DOM to find the board element, reads piece positions via CSS classes (`.piece.wk.square-51`), and builds a FEN string. Side-to-move is guessed from last-move highlight squares. Castling rights are tracked by monitoring king/rook movement throughout the game.
-2. **Monitor Loop** (`content.js`) — Polls the board every 100ms, detects position changes and new games. Only triggers analysis on the player's turn. Clears arrows on opponent's turn. Resets castling tracking on new game.
-3. **Engine Analysis** (`engine.js`) — Sends the FEN to Stockfish via a Blob Worker. Levels 1000-2800 use `UCI_LimitStrength = true` to cap engine strength. Level 3000 disables this for full, unrestricted Stockfish power.
-4. **Rendering** (`drawing.js`) — Injects highlight divs and SVG arrows directly into the chess.com board DOM element. Uses the same percentage-based CSS transform system as chess.com's pieces, so positioning is pixel-perfect on both desktop and mobile.
-5. **Widget** (`widget.js`) — Floating dashboard with tabs (Engine, Info, Style, Arrow, Eval), draggable header, theme switching, and settings persistence.
-
-### DOM Injection Rendering
-
-Previous versions used a canvas overlay, which had alignment issues on mobile due to viewport scaling and DPR differences. The current approach injects elements directly into the board:
-
-- **Highlight mode**: Colored `div` elements positioned with `transform: translate(X%, Y%)` — the same coordinate system chess.com uses for pieces
-- **Arrow mode**: SVG elements with an 800×800 viewBox (8 squares × 100 units each), with glow effect and arrowhead markers
-- **No pixel math needed** — elements inherit the board's layout automatically
-- **Works identically on desktop and mobile**
-
-### Blob Worker Pattern
-
-Chrome MV3 content scripts can't create Workers from `chrome-extension://` URLs. We work around this by:
-
-1. Fetching `stockfish.js` and `stockfish.wasm` as raw data
-2. Wrapping the JS in a Blob with WASM fetch interception
-3. Creating the Worker from `URL.createObjectURL(blob)`
-
-This is the only pattern that works reliably in MV3 content scripts. Don't try to simplify it.
-
-### Analysis Flow
-
-```
-Position change detected (monitor loop)
-  → Is it my turn?
-    → Yes: analyze(fen) → stockfish worker → bestmove → showMove() → draw arrow
-    → No + queue mode: preAnalyze(fen) at reduced depth → store in pendingArrows
-    → No + no queue: skip (wait for my turn)
-  → My turn + pendingArrows exist: restore arrows from pending
-  → My turn + no arrows + not analyzing: trigger analyze()
-```
-
-### Abort & Retry
-
-When a new position arrives while analysis is in progress:
-- `stop` is sent to the worker to abort the current search
-- The resulting bestmove from `stop` is discarded via `ignoreNextBestmove` counter
-- A fresh analysis starts immediately for the new position
-
-### Watchdog Timer
-
-A safety timeout prevents permanently stuck analysis:
-- Timeout scales with config: `movetime + 5s` if movetime is set, otherwise `15s + 1.5s per depth above 10`
-- On timeout: resets `analyzing` flag, sends `stop`, increments `ignoreNextBestmove`
-
-### Castling Rights Tracking
-
-FEN castling rights are determined by tracking king and rook movement throughout the game:
-- Each king/rook starting square is monitored every poll cycle
-- Once a piece leaves its starting square, castling is permanently disabled for that side
-- Flags are reset on new game detection
-- This prevents illegal castling suggestions when a king/rook has moved and returned to its original square
-
-## Configuration
-
-### ELO Levels (Normal Mode)
-
-Defined in `ELO_CONFIG` in `engine.js`:
-
-| Level | Label | Skill | Depth | UCI ELO | Error Rate | Movetime |
-|-------|-------|-------|-------|---------|------------|----------|
-| 1000 | BRONZE | 1 | 5 | 800 | 30% | — |
-| 1200 | BRONZE+ | 3 | 7 | 1100 | 22% | — |
-| 1300 | SILVER | 5 | 8 | 1250 | 18% | — |
-| 1400 | SILVER+ | 7 | 9 | 1350 | 14% | — |
-| 1500 | SILVER++ | 9 | 10 | 1450 | 10% | — |
-| 1600 | GOLD | 11 | 11 | 1550 | 8% | — |
-| 1700 | GOLD+ | 13 | 12 | 1650 | 6% | — |
-| 1800 | GOLD++ | 15 | 13 | 1750 | 4% | — |
-| 1900 | EXPERT | 17 | 14 | 1850 | 3% | — |
-| 2000 | MASTER | 18 | 16 | 2000 | 2% | — |
-| 2200 | IM | 19 | 18 | 2200 | 1% | — |
-| 2500 | GM | 20 | 20 | 2500 | 0.5% | 5s |
-| 2800 | SUPER GM | 20 | 20 | 2800 | 0% | 6s |
-| 3000 | STOCKFISH | 20 | 22 | — | 0% | 3s |
-
-### UCI_LimitStrength
-
-This is the key mechanism that controls engine strength:
-
-- **Levels 1000-2800**: `UCI_LimitStrength = true`, `UCI_Elo = <target>`. Stockfish artificially weakens itself to play at the target rating. Combined with Skill Level and error rate for human-like play.
-- **Level 3000**: `UCI_LimitStrength = false`. No artificial cap — Stockfish plays at full, unrestricted strength. Hash table is bumped to 32MB, `Contempt 50` (anti-draw bias). This is raw Stockfish, the strongest possible play in browser WASM.
-
-### Combat Mode
-
-Same ELO keys but cranked up — higher depth, higher skill, lower error rates. Defined in `COMBAT_CONFIG` in `engine.js`. Combat mode 3000 uses depth 25 with a 5s movetime cap and full unlimited Stockfish strength (`UCI_LimitStrength = false`, hash 32MB, `Contempt 50`).
-
-### Performance Optimizations
-
-- **Hash table** (16MB / 32MB): Stockfish caches evaluated positions in a transposition table. Mode 3000 uses 32MB for deeper search caching; all other levels use 16MB.
-- **No `ucinewgame` per move**: The hash table is only reset on new game detection, not on every analysis call. This preserves cached positions across moves.
-- **Movetime caps**: High ELO levels use `go depth X movetime Y` — Stockfish searches as deep as possible within the time limit.
-- **Contempt 50** (mode 3000 only): Makes Stockfish play aggressively and avoid draws.
-
-To add a new ELO level, update `ELO_LEVELS`, `ELO_LABELS`, `ELO_CONFIG`, and `COMBAT_CONFIG` in `engine.js`. Keep them in sync.
-
-### Desktop vs Mobile
-
-The extension works on any browser that supports Chrome extensions (MV3):
-- **Desktop** (Chrome, Edge, Brave): Full performance, Stockfish reaches higher depths within movetime
-- **Mobile** (Lemur Browser on Android): Functional but slower — mobile CPUs are weaker, so the same movetime yields lower search depth. Arrow/highlight rendering is identical thanks to DOM injection.
-
-Stockfish WASM in the browser is inherently weaker than desktop Stockfish due to:
-- Single thread only (WASM Worker limitation)
-- Limited hash table (32MB max vs 1GB+ on desktop)
-- ~50-70% of native C++ calculation speed
-
-## Contributing
-
-The codebase is modular and well-commented. Each file has a block header explaining what it does, what's safe to change, and what you should leave alone.
-
-### Quick Guide
-
-- **Adjust ELO strength** → Edit `ELO_CONFIG` / `COMBAT_CONFIG` in `engine.js`
-- **Change arrow/highlight appearance** → Edit `createArrowSvg()` / `createHighlightEl()` in `drawing.js`
-- **Add a new widget tab** → Add HTML in `widget.js`, the tab handler is generic
-- **Add a new setting** → Save in the relevant handler, restore in `loadWidgetSettings()` in `widget.js`
-- **Board detection broken** → Update selectors in `findBoard()` / `getFen()` in `board.js`
-- **Add a new state variable** → Register it in `state.js` so all modules can access it
-
-### Things to Watch Out For
-
-- **chess.com DOM changes** — They update their markup periodically. Board selectors in `board.js` may need updating.
-- **CSS conflicts** — chess.com's styles are aggressive. Use `!important` in `widget.css` as needed.
-- **Blob Worker** — Don't change the Worker creation pattern in `engine.js`. It's the only way that works in MV3.
-- **Load order** — `state.js` must be first, `content.js` must be last.
-- **Turn detection** — `monitor()` in `content.js` is the single source of truth for show/hide arrow logic. Don't add turn checks elsewhere.
-- **Hash table** — `ucinewgame` resets the hash table. Only send it on actual new games, not on every analysis.
-- **Castling flags** — Reset in `content.js` on new game detection. Don't reset them elsewhere.
-- **DOM injection** — Arrow/highlight elements are injected into the board element. Don't switch back to canvas — it doesn't work reliably on mobile.
-
-## Tech Stack
-
-- **Runtime**: Chrome Extension Manifest V3
-- **Engine**: Stockfish (compiled to WASM)
-- **UI**: Vanilla JS + CSS Custom Properties
-- **Rendering**: DOM injection (SVG arrows + div highlights)
-- **Storage**: `chrome.storage.local`
-- **Build Tools**: None — zero dependencies, no bundler
-
-## License
-
-MIT — free to use, modify, and distribute.
 
 ---
 
-Built with ♟️ by the Titan Chess team
+## 🧪 Development & Verification
+
+Run the built-in regression test suites and engine benchmarks:
+
+```bash
+# 1. Run context gating & mode detection suite (24 test scenarios)
+node bench/test-context-gating.js
+
+# 2. Run engine protection & security gate suite (11 test scenarios)
+node bench/test-leak-gates.js
+
+# 3. Run full Stockfish WASM performance benchmark
+node bench/run-benchmark.js --movetime 1000
+```
+
+---
+
+## 🔒 Security & Privacy
+
+- **Client-Side Isolated Execution**: No board positions, moves, or user identifiers are ever transmitted to an external server.
+- **Sandboxed Blob Worker**: Stockfish operates strictly within an isolated Web Worker via dynamic blob creation, conforming fully to Chrome Manifest V3 security boundaries.
+- **Safe Chrome Storage Wrapper**: Built-in context validation (`TitanChrome`) defends against orphaned script exceptions during hot-reloads.
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE) — free for modification, educational use, and personal analysis.
+  

@@ -51,10 +51,17 @@
     // ensure the overlay container exists inside the board element.
     // creates it if missing. the container is position:absolute,
     // fills the board, and has pointer-events:none so clicks pass through.
+    // SPA-safe: if the board element was replaced (chess.com does this
+    // on navigation), we detect the orphan and re-create.
     function ensureOverlay() {
         const board = B.findBoard();
         if (!board) return null;
+        // existing overlay is valid only if it's still inside the CURRENT board
         if (overlayContainer && board.contains(overlayContainer)) return overlayContainer;
+        // clean up orphaned overlay from a previous board
+        if (overlayContainer && overlayContainer.parentNode) {
+            try { overlayContainer.parentNode.removeChild(overlayContainer); } catch (e) {}
+        }
         overlayContainer = document.createElement('div');
         overlayContainer.className = 'titan-overlay';
         overlayContainer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:100;';
@@ -179,5 +186,217 @@
         // actual init happens on first draw() call via ensureOverlay()
     }
 
-    window.TitanDraw = { draw, clearArrows, initCanvas };
+    // ============================================================
+    // board eval bar (W/D/L percentages rendered on the board)
+    // ============================================================
+    //
+    // a slim, glassy bar that floats just BELOW the board so it never
+    // covers pieces. it shows the live win/draw/loss probabilities as
+    // a segmented bar with the eval score on the left. driven by
+    // renderBoardEval() which widget.js calls from updateEvalDisplay().
+    //
+    // the bar uses position:fixed and re-anchors to the board's
+    // bounding rect on scroll/resize, so it tracks the board wherever
+    // it moves on the page. pointer-events are off.
+
+    let evalBarEl = null;
+    let evalBarAnchored = false;
+
+    // create (once) and return the eval bar element.
+    function ensureEvalBar() {
+        if (evalBarEl && document.body && document.body.contains(evalBarEl)) return evalBarEl;
+        if (!evalBarEl) {
+            evalBarEl = document.createElement('div');
+            evalBarEl.className = 'titan-board-eval';
+            evalBarEl.innerHTML = `
+                <div class="tbe-score" id="tbe-score">—</div>
+                <div class="tbe-bar">
+                    <div class="tbe-seg tbe-white" id="tbe-white"><span>—</span></div>
+                    <div class="tbe-seg tbe-draw" id="tbe-draw"><span>—</span></div>
+                    <div class="tbe-seg tbe-black" id="tbe-black"><span>—</span></div>
+                </div>
+            `;
+        }
+        if (document.body && !document.body.contains(evalBarEl)) {
+            document.body.appendChild(evalBarEl);
+        }
+        anchorEvalBarListener();
+        return evalBarEl;
+    }
+
+    // re-position the eval bar just below the board. force=true so we
+    // always get a fresh viewport rect — the cached rect goes stale on
+    // scroll, which would leave the bar floating in the wrong spot.
+    function anchorEvalBar() {
+        if (!evalBarEl) return;
+        const rect = B.getBoardRect(true);
+        if (!rect) { evalBarEl.style.display = 'none'; return; }
+        const gap = 6;
+        evalBarEl.style.left = rect.x + 'px';
+        evalBarEl.style.top = (rect.y + rect.height + gap) + 'px';
+        evalBarEl.style.width = rect.width + 'px';
+    }
+
+    // attach (once) scroll/resize listeners to re-anchor the bar.
+    function anchorEvalBarListener() {
+        if (evalBarAnchored) return;
+        evalBarAnchored = true;
+        window.addEventListener('scroll', anchorEvalBar, { passive: true });
+        window.addEventListener('resize', anchorEvalBar, { passive: true });
+    }
+
+    // render the W/D/L bar. called on every engine info line with the
+    // computed probabilities + score text. hasEval=false → waiting state.
+    function renderBoardEval(wdl, scoreText, hasEval) {
+        const el = ensureEvalBar();
+        if (!el) return;
+
+        // CONTEXT GATE: never show engine eval in denied contexts
+        // (live human games etc.) — late info lines after an SPA
+        // navigation must not re-show the bar.
+        if (window.TitanContext && !window.TitanContext.isAllowed()) {
+            el.style.display = 'none';
+            return;
+        }
+
+        // respect the eval-bar toggle ONLY — the eval bar is an
+        // independent feature, separate from the arrow/titan toggle.
+        if (!T.evalBarOn) { el.style.display = 'none'; return; }
+
+        anchorEvalBar();
+        el.style.display = 'flex';
+
+        const score = el.querySelector('#tbe-score');
+        if (score) score.textContent = hasEval ? scoreText : '—';
+
+        const white = el.querySelector('#tbe-white');
+        const draw = el.querySelector('#tbe-draw');
+        const black = el.querySelector('#tbe-black');
+        const pw = el.querySelector('#tbe-white span');
+        const pd = el.querySelector('#tbe-draw span');
+        const pb = el.querySelector('#tbe-black span');
+
+        if (hasEval) {
+            if (white) white.style.width = wdl.white + '%';
+            if (draw) draw.style.width = wdl.draw + '%';
+            if (black) black.style.width = wdl.black + '%';
+            if (pw) pw.textContent = wdl.white + '%';
+            if (pd) pd.textContent = wdl.draw + '%';
+            if (pb) pb.textContent = wdl.black + '%';
+        } else {
+            // waiting for first eval: full-width neutral grey bar
+            if (white) white.style.width = '0%';
+            if (draw) draw.style.width = '100%';
+            if (black) black.style.width = '0%';
+            if (pw) pw.textContent = '—';
+            if (pd) pd.textContent = '—';
+            if (pb) pb.textContent = '—';
+        }
+    }
+
+    // explicit show/hide for the eval-bar toggle (called from widget.js)
+    // so it responds instantly instead of waiting for the next info line.
+    function setBoardEval(on) {
+        if (!evalBarEl) return;
+        // CONTEXT GATE: turning the bar ON in a denied context is a no-op
+        if (on && window.TitanContext && !window.TitanContext.isAllowed()) return;
+        if (on) { anchorEvalBar(); evalBarEl.style.display = 'flex'; }
+        else { evalBarEl.style.display = 'none'; }
+    }
+
+    // ============================================================
+    // move win% badges (top-moves overlay)
+    // ============================================================
+    //
+    // renders a percentage badge on the destination square of each
+    // candidate move in T.topMoves. green = good (winning), grey =
+    // neutral, red = bad. the best move is marked with a small ★.
+    // uses a dedicated overlay so badges don't clobber the arrows.
+
+    let movePctOverlay = null;
+
+    function ensureMovePctOverlay() {
+        const board = B.findBoard();
+        if (!board) return null;
+        if (movePctOverlay && board.contains(movePctOverlay)) return movePctOverlay;
+        // clean up orphaned overlay from a previous board (SPA navigation)
+        if (movePctOverlay && movePctOverlay.parentNode) {
+            try { movePctOverlay.parentNode.removeChild(movePctOverlay); } catch (e) {}
+        }
+        movePctOverlay = document.createElement('div');
+        movePctOverlay.className = 'titan-movepct';
+        movePctOverlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:101;';
+        board.style.position = board.style.position || 'relative';
+        board.appendChild(movePctOverlay);
+        return movePctOverlay;
+    }
+
+    // pick a badge color for a given win% (0-100).
+    function winPctColor(pct) {
+        if (pct >= 62) return { bg: 'rgba(0,255,136,0.22)', border: 'rgba(0,255,136,0.85)', text: '#00ff88' };
+        if (pct >= 53) return { bg: 'rgba(0,242,255,0.18)', border: 'rgba(0,242,255,0.75)', text: '#00f2ff' };
+        if (pct <= 38) return { bg: 'rgba(255,64,64,0.22)', border: 'rgba(255,64,64,0.85)', text: '#ff5252' };
+        if (pct <= 47) return { bg: 'rgba(255,140,0,0.18)', border: 'rgba(255,140,0,0.7)', text: '#ffa940' };
+        return { bg: 'rgba(160,160,160,0.18)', border: 'rgba(200,200,200,0.6)', text: '#d5d5d5' };
+    }
+
+    // render the move% badges. called by engine.js after finalizeTopMoves.
+    function drawMovePct() {
+        const overlay = ensureMovePctOverlay();
+        if (!overlay) return;
+        overlay.innerHTML = '';
+        if (!T.movePctOn || !T.topMoves || !T.topMoves.length) return;
+
+        const orientation = B.getBoardRect() ? B.getBoardRect().orientation : 'white';
+
+        T.topMoves.forEach((m, idx) => {
+            const square = m.to || m.from;
+            if (!square) return;
+            const tf = sqToTransform(square, orientation);
+            if (!tf) return;
+
+            const c = winPctColor(m.winPct);
+            const badge = document.createElement('div');
+            badge.className = 'titan-movepct-badge';
+            // NOTE: translate() percentages are relative to the element's own
+            // size (which is one square = 12.5% of the board), so xPct/yPct
+            // map 1:1 to square coordinates. matches createHighlightEl().
+            badge.style.cssText =
+                `position:absolute;left:0;top:0;width:12.5%;height:12.5%;` +
+                `display:flex;align-items:center;justify-content:center;` +
+                `pointer-events:none;transform:translate(${tf.xPct}%,${tf.yPct}%);`;
+            // inner circle with the percentage
+            const inner = document.createElement('div');
+            inner.style.cssText =
+                `width:82%;height:82%;border-radius:50%;display:flex;flex-direction:column;` +
+                `align-items:center;justify-content:center;box-sizing:border-box;` +
+                `background:${c.bg};border:2px solid ${c.border};` +
+                `box-shadow:0 2px 8px rgba(0,0,0,0.45);`;
+            const num = document.createElement('span');
+            num.textContent = m.winPct + '%';
+            num.style.cssText = `font-size:13px;font-weight:800;color:${c.text};line-height:1;` +
+                `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;` +
+                `text-shadow:0 1px 3px rgba(0,0,0,0.7);`;
+            inner.appendChild(num);
+
+            if (idx === 0) {
+                // best move gets a small star above the number
+                const star = document.createElement('span');
+                star.textContent = '★';
+                star.style.cssText = `font-size:9px;line-height:1;color:#ffd54a;` +
+                    `text-shadow:0 1px 2px rgba(0,0,0,0.8);`;
+                inner.appendChild(star);
+            }
+
+            badge.appendChild(inner);
+            overlay.appendChild(badge);
+        });
+    }
+
+    // remove all move% badges (called on new game / opponent's turn).
+    function clearMovePct() {
+        if (movePctOverlay) movePctOverlay.innerHTML = '';
+    }
+
+    window.TitanDraw = { draw, clearArrows, initCanvas, renderBoardEval, setBoardEval, drawMovePct, clearMovePct };
 })();

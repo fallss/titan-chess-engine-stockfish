@@ -100,79 +100,79 @@
             if (!board) return null;
             let pos = new Array(64).fill(null);
 
-        board.querySelectorAll('.piece').forEach(p => {
-            const cls = Array.from(p.classList);
-            let color = cls.some(c => c.startsWith('w') && c.length === 2) ? 'w' : 'b';
-            if (cls.includes('white')) color = 'w';
-            if (cls.includes('black')) color = 'b';
+            board.querySelectorAll('.piece').forEach(p => {
+                const cls = Array.from(p.classList);
+                let color = cls.some(c => c.startsWith('w') && c.length === 2) ? 'w' : 'b';
+                if (cls.includes('white')) color = 'w';
+                if (cls.includes('black')) color = 'b';
 
-            let type = 'p';
-            if (cls.some(c => c.includes('knight') || c.includes('bn') || c.includes('wn'))) type = 'n';
-            else if (cls.some(c => c.includes('bishop') || c.includes('bb') || c.includes('wb'))) type = 'b';
-            else if (cls.some(c => c.includes('rook') || c.includes('br') || c.includes('wr'))) type = 'r';
-            else if (cls.some(c => c.includes('queen') || c.includes('bq') || c.includes('wq'))) type = 'q';
-            else if (cls.some(c => c.includes('king') || c.includes('bk') || c.includes('wk'))) type = 'k';
+                let type = 'p';
+                if (cls.some(c => c.includes('knight') || c.includes('bn') || c.includes('wn'))) type = 'n';
+                else if (cls.some(c => c.includes('bishop') || c.includes('bb') || c.includes('wb'))) type = 'b';
+                else if (cls.some(c => c.includes('rook') || c.includes('br') || c.includes('wr'))) type = 'r';
+                else if (cls.some(c => c.includes('queen') || c.includes('bq') || c.includes('wq'))) type = 'q';
+                else if (cls.some(c => c.includes('king') || c.includes('bk') || c.includes('wk'))) type = 'k';
 
-            const sq = cls.find(c => c.match(/square-\d+/));
-            if (sq) {
-                const m = sq.match(/\d+/);
-                if (m && m[0].length >= 2) {
-                    const file = parseInt(m[0][0]) - 1, rank = 8 - parseInt(m[0][1]);
-                    const idx = rank * 8 + file;
-                    if (idx >= 0 && idx < 64) pos[idx] = color === 'w' ? type.toUpperCase() : type;
-                }
-            }
-        });
-
-        // build the position part of FEN
-        let fen = '';
-        for (let r = 0; r < 8; r++) {
-            let empty = 0;
-            for (let f = 0; f < 8; f++) {
-                if (pos[r * 8 + f]) { if (empty) { fen += empty; empty = 0; } fen += pos[r * 8 + f]; } else empty++;
-            }
-            if (empty) fen += empty;
-            if (r < 7) fen += '/';
-        }
-
-        // guess side to move from highlighted squares
-        let turn = 'w';
-        if (fen !== 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR') {
-            const hl = document.querySelectorAll('.highlight');
-            let hasHL = false, isWhite = false;
-            hl.forEach(h => {
-                const sq = Array.from(h.classList).find(c => c.match(/square-\d+/));
+                const sq = cls.find(c => c.match(/square-\d+/));
                 if (sq) {
                     const m = sq.match(/\d+/);
                     if (m && m[0].length >= 2) {
                         const file = parseInt(m[0][0]) - 1, rank = 8 - parseInt(m[0][1]);
-                        const pc = pos[rank * 8 + file];
-                        if (pc) { hasHL = true; if (pc === pc.toUpperCase()) isWhite = true; }
+                        const idx = rank * 8 + file;
+                        if (idx >= 0 && idx < 64) pos[idx] = color === 'w' ? type.toUpperCase() : type;
                     }
                 }
             });
-            if (hasHL) turn = isWhite ? 'b' : 'w';
-        }
 
-        // track castling rights by detecting when king/rook leave
-        // their starting squares. once moved, castling is permanently
-        // disabled for that side (even if the piece returns).
-        // flags are reset on new game detection in content.js.
-        if (pos[60] !== 'K') T.castleWhiteKingMoved = true;
-        if (pos[4] !== 'k') T.castleBlackKingMoved = true;
-        if (pos[56] !== 'R') T.castleWhiteRookAMoved = true;
-        if (pos[63] !== 'R') T.castleWhiteRookHMoved = true;
-        if (pos[0] !== 'r') T.castleBlackRookAMoved = true;
-        if (pos[7] !== 'r') T.castleBlackRookHMoved = true;
+            // build the position part of FEN
+            let fen = '';
+            for (let r = 0; r < 8; r++) {
+                let empty = 0;
+                for (let f = 0; f < 8; f++) {
+                    if (pos[r * 8 + f]) { if (empty) { fen += empty; empty = 0; } fen += pos[r * 8 + f]; } else empty++;
+                }
+                if (empty) fen += empty;
+                if (r < 7) fen += '/';
+            }
 
-        let castling = '';
-        if (pos[60] === 'K' && pos[63] === 'R' && !T.castleWhiteKingMoved && !T.castleWhiteRookHMoved) castling += 'K';
-        if (pos[60] === 'K' && pos[56] === 'R' && !T.castleWhiteKingMoved && !T.castleWhiteRookAMoved) castling += 'Q';
-        if (pos[4] === 'k' && pos[7] === 'r' && !T.castleBlackKingMoved && !T.castleBlackRookHMoved) castling += 'k';
-        if (pos[4] === 'k' && pos[0] === 'r' && !T.castleBlackKingMoved && !T.castleBlackRookAMoved) castling += 'q';
-        if (!castling) castling = '-';
+            // guess side to move from highlighted squares
+            let turn = 'w';
+            if (fen !== 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR') {
+                const hl = document.querySelectorAll('.highlight');
+                let hasHL = false, isWhite = false;
+                hl.forEach(h => {
+                    const sq = Array.from(h.classList).find(c => c.match(/square-\d+/));
+                    if (sq) {
+                        const m = sq.match(/\d+/);
+                        if (m && m[0].length >= 2) {
+                            const file = parseInt(m[0][0]) - 1, rank = 8 - parseInt(m[0][1]);
+                            const pc = pos[rank * 8 + file];
+                            if (pc) { hasHL = true; if (pc === pc.toUpperCase()) isWhite = true; }
+                        }
+                    }
+                });
+                if (hasHL) turn = isWhite ? 'b' : 'w';
+            }
 
-        return `${fen} ${turn} ${castling} - 0 1`;
+            // track castling rights by detecting when king/rook leave
+            // their starting squares. once moved, castling is permanently
+            // disabled for that side (even if the piece returns).
+            // flags are reset on new game detection in content.js.
+            if (pos[60] !== 'K') T.castleWhiteKingMoved = true;
+            if (pos[4] !== 'k') T.castleBlackKingMoved = true;
+            if (pos[56] !== 'R') T.castleWhiteRookAMoved = true;
+            if (pos[63] !== 'R') T.castleWhiteRookHMoved = true;
+            if (pos[0] !== 'r') T.castleBlackRookAMoved = true;
+            if (pos[7] !== 'r') T.castleBlackRookHMoved = true;
+
+            let castling = '';
+            if (pos[60] === 'K' && pos[63] === 'R' && !T.castleWhiteKingMoved && !T.castleWhiteRookHMoved) castling += 'K';
+            if (pos[60] === 'K' && pos[56] === 'R' && !T.castleWhiteKingMoved && !T.castleWhiteRookAMoved) castling += 'Q';
+            if (pos[4] === 'k' && pos[7] === 'r' && !T.castleBlackKingMoved && !T.castleBlackRookHMoved) castling += 'k';
+            if (pos[4] === 'k' && pos[0] === 'r' && !T.castleBlackKingMoved && !T.castleBlackRookAMoved) castling += 'q';
+            if (!castling) castling = '-';
+
+            return `${fen} ${turn} ${castling} - 0 1`;
         } catch (err) {
             console.error('[TitanFree] getFen error', err);
             return null;

@@ -47,6 +47,7 @@
     const B = window.TitanBoard;
     const D = window.TitanDraw;
     const Eng = window.TitanEngine;
+    const Ch = window.TitanChrome;   // safe chrome.* wrapper (see state.js)
 
     // tracks which elo level is selected in the slider.
     // index into Eng.ELO_LEVELS and Eng.ELO_LABELS arrays.
@@ -74,12 +75,13 @@
     //     #widget-advanced (overlay panel for theme/color settings)
     function createFloatingWidget() {
         if (document.getElementById('titan-widget')) return;
+        if (!Ch.alive) return;   // extension reloaded — don't inject a broken widget
 
         // load our stylesheet — must be a separate file because
         // inline styles alone can't handle :hover, animations, etc.
         const link = document.createElement('link');
         link.rel = 'stylesheet';
-        link.href = chrome.runtime.getURL('content/widget.css');
+        link.href = Ch.getURL('content/widget.css');
         document.head.appendChild(link);
 
         const widget = document.createElement('div');
@@ -104,6 +106,19 @@
                     <div class="widget-icon" data-icon="style" title="Style">🎨</div>
                     <div class="widget-icon" data-icon="arrow" title="Arrow">➜</div>
                     <div class="widget-icon" data-icon="eval" title="Eval">📊</div>
+                </div>
+                <div class="widget-eval-strip" id="widget-eval-strip" style="display:block">
+                    <div class="eval-strip-bar">
+                        <div class="eval-strip-white" id="eval-strip-white" style="width:50%"></div>
+                        <div class="eval-strip-draw" id="eval-strip-draw" style="width:0%"></div>
+                        <div class="eval-strip-black" id="eval-strip-black" style="width:50%"></div>
+                        <div class="eval-strip-marker" id="eval-strip-marker" style="left:50%"></div>
+                    </div>
+                    <div class="eval-strip-text">
+                        <span class="eval-strip-label">White <b id="eval-strip-pct-white">50%</b></span>
+                        <span class="eval-strip-label">Draw <b id="eval-strip-pct-draw">0%</b></span>
+                        <span class="eval-strip-label">Black <b id="eval-strip-pct-black">50%</b></span>
+                    </div>
                 </div>
                 <div class="tab-content-container">
                     <!-- ENGINE tab: mode buttons, elo slider, action buttons -->
@@ -132,6 +147,8 @@
                             <div class="action-btn hide" id="hide-btn">HIDE</div>
                             <div class="action-btn auto active" id="auto-btn">AUTO</div>
                             <div class="action-btn queue" id="queue-btn">QUEUE</div>
+                            <div class="action-btn off" id="off-btn">OFF</div>
+                            <div class="action-btn eval active" id="eval-btn">EVAL</div>
                         </div>
                     </div>
                     <!-- INFO tab: read-only status display -->
@@ -157,7 +174,7 @@
                                 <div class="info-section-body">
                                     <div class="info-row"><div class="info-label">ARROW MODE</div><div class="info-value" id="info-arrow-mode">Arrow</div></div>
                                     <div class="info-row"><div class="info-label">ARROW COLOR</div><div class="info-value" id="info-arrow-color"><span class="color-indicator" style="background:#00f2ff;"></span><span>Cyan</span></div></div>
-                                    <div class="info-row"><div class="info-label">EVAL BAR</div><div class="info-value premium-locked">🔒 Premium</div></div>
+                                    <div class="info-row"><div class="info-label">EVAL BAR</div><div class="info-value highlight" id="info-eval-bar">—</div></div>
                                     <div class="info-row"><div class="info-label">VERSION</div><div class="info-value"><span class="info-version-badge"><span class="info-version-dot"></span>FREE v1.0</span></div></div>
                                 </div>
                             </div>
@@ -200,13 +217,39 @@
                             </div>
                         </div>
                     </div>
-                    <!-- EVAL tab: locked + theme picker -->
+                    <!-- EVAL tab: live position evaluation + eval bar -->
                     <div class="tab-content" data-content="eval" style="display:none">
+                        <div class="eval-section">
+                            <div class="section-label">POSITION EVALUATION</div>
+                            <div class="eval-readout">
+                                <div class="eval-score" id="eval-score">+0.00</div>
+                                <div class="eval-best" id="eval-best">—</div>
+                            </div>
+                            <div class="eval-bar">
+                                <div class="eval-bar-white" id="eval-bar-white" style="width:50%"></div>
+                                <div class="eval-bar-draw" id="eval-bar-draw" style="width:0%"></div>
+                                <div class="eval-bar-black" id="eval-bar-black" style="width:50%"></div>
+                                <div class="eval-bar-marker" id="eval-bar-marker" style="left:50%"></div>
+                            </div>
+                            <div class="eval-percents">
+                                <span class="eval-pct eval-pct-white">White <b id="eval-pct-white">50%</b></span>
+                                <span class="eval-pct eval-pct-draw">Draw <b id="eval-pct-draw">0%</b></span>
+                                <span class="eval-pct eval-pct-black">Black <b id="eval-pct-black">50%</b></span>
+                            </div>
+                            <div class="eval-hint" id="eval-hint">Waiting for engine analysis…</div>
+                        </div>
                         <div class="eval-section">
                             <div class="section-label">EVALUATION BAR</div>
                             <div class="eval-toggle-grid">
-                                <div class="eval-toggle-card active" data-eval="false"><div class="eval-toggle-icon">🔒</div><div class="eval-toggle-title">LOCKED</div><div class="eval-toggle-desc">Premium only</div></div>
-                                <div class="eval-toggle-card" data-eval="true" style="opacity:0.4;cursor:not-allowed;"><div class="eval-toggle-icon">✅</div><div class="eval-toggle-title">ON</div><div class="eval-toggle-desc">Premium only</div></div>
+                                <div class="eval-toggle-card active" data-evalbar="on"><div class="eval-toggle-icon">✅</div><div class="eval-toggle-title">ON</div><div class="eval-toggle-desc">Show live eval bar</div></div>
+                                <div class="eval-toggle-card" data-evalbar="off"><div class="eval-toggle-icon">🚫</div><div class="eval-toggle-title">OFF</div><div class="eval-toggle-desc">Hide eval bar</div></div>
+                            </div>
+                        </div>
+                        <div class="eval-section">
+                            <div class="section-label">MOVE WIN%</div>
+                            <div class="eval-toggle-grid">
+                                <div class="eval-toggle-card active" data-movepct="on"><div class="eval-toggle-icon">💯</div><div class="eval-toggle-title">ON</div><div class="eval-toggle-desc">Win% on board squares</div></div>
+                                <div class="eval-toggle-card" data-movepct="off"><div class="eval-toggle-icon">🚫</div><div class="eval-toggle-title">OFF</div><div class="eval-toggle-desc">Hide square badges</div></div>
                             </div>
                         </div>
                         <div class="eval-section">
@@ -226,7 +269,8 @@
                     <div class="tool-icon" data-tool="highlight" title="Highlight Mode">🔆</div>
                     <div class="tool-icon active" data-tool="arrow" title="Arrow Mode">➜</div>
                     <div class="tool-icon" data-tool="color" title="Arrow Color">🎨</div>
-                    <div class="tool-icon" data-tool="eval" title="Eval Bar (Premium)" style="opacity:0.4;">📊</div>
+                    <div class="tool-icon active" data-tool="eval" title="Eval Bar">📊</div>
+                    <div class="tool-icon active" data-tool="movepct" title="Move Win%">💯</div>
                     <div class="tool-icon" data-tool="theme" title="Themes">🌈</div>
                     <div class="tool-icon" data-tool="settings" title="Settings">⚙️</div>
                     <div class="tool-icon" data-tool="upgrade" title="Upgrade to Premium">⭐</div>
@@ -339,7 +383,7 @@
             if (eloValue) eloValue.textContent = Eng.ELO_LEVELS[currentEloIndex];
             if (eloLabel) eloLabel.textContent = Eng.ELO_LABELS[currentEloIndex];
             Eng.setElo(String(Eng.ELO_LEVELS[currentEloIndex]));
-            chrome.storage.local.set({ elo: String(Eng.ELO_LEVELS[currentEloIndex]) });
+            Ch.set({ elo: String(Eng.ELO_LEVELS[currentEloIndex]) });
             D.clearArrows();
             T.currentFen = '';  // force re-analysis on next poll
             updateInfoDisplay();
@@ -396,7 +440,7 @@
                 }
                 D.clearArrows();
                 T.currentFen = '';
-                chrome.storage.local.set({ engineMode: mode });
+                Ch.set({ engineMode: mode });
             });
         });
 
@@ -409,7 +453,75 @@
             T.moveQueue = [];
             updateQueueDisplay();
             showStatusNotification(T.queueMode ? 'QUEUE: ON' : 'QUEUE: OFF');
-            chrome.storage.local.set({ queueMode: T.queueMode });
+            Ch.set({ queueMode: T.queueMode });
+        });
+
+        // OFF switch: toggles the ARROW/move-prediction feature only.
+        // when OFF, arrows and move% badges are cleared and the engine
+        // stops drawing them — but the eval bar keeps working if its
+        // own EVAL switch is on. the two features are independent.
+        const offBtn = widget.querySelector('#off-btn');
+        if (offBtn) offBtn.addEventListener('click', function () {
+            T.engineOn = !T.engineOn;
+            this.classList.toggle('active', !T.engineOn);
+            this.textContent = T.engineOn ? 'OFF' : 'ON';
+            if (!T.engineOn) {
+                // clear arrow/badge overlays only — leave eval bar alone
+                T.arrows = [];
+                T.pendingArrows = [];
+                T.topMoves = [];
+                T.moveQueue = [];
+                D.clearArrows();
+                if (D.clearMovePct) D.clearMovePct();
+                // if the eval bar is also off, nothing needs the engine
+                if (!T.evalBarOn && Eng && Eng.stopAnalysis) Eng.stopAnalysis();
+                updateQueueDisplay();
+                showStatusNotification('ARROWS: OFF');
+            } else {
+                showStatusNotification('ARROWS: ON');
+                // re-trigger analysis on next monitor tick
+                T.currentFen = '';
+            }
+            Ch.set({ engineOn: T.engineOn });
+        });
+
+        // single helper that keeps every eval-bar control in sync:
+        // the EVAL action button, the widget strip, the floating board
+        // bar below the board, the tool icon, and the toggle cards.
+        function syncEvalBarUI() {
+            const evBtn = widget.querySelector('#eval-btn');
+            if (evBtn) {
+                evBtn.classList.toggle('active', T.evalBarOn);
+                evBtn.textContent = T.evalBarOn ? 'EVAL' : 'EVAL';
+            }
+            const strip = widget.querySelector('#widget-eval-strip');
+            if (strip) strip.style.display = T.evalBarOn ? 'block' : 'none';
+            if (D.setBoardEval) D.setBoardEval(T.evalBarOn);
+            const toolIcon = widget.querySelector('.widget-icon[data-icon="eval"]');
+            if (toolIcon) toolIcon.classList.toggle('active', T.evalBarOn);
+            widget.querySelectorAll('.eval-toggle-card[data-evalbar]').forEach(card => {
+                card.classList.toggle('active', card.dataset.evalbar === (T.evalBarOn ? 'on' : 'off'));
+            });
+        }
+
+        // EVAL action button — dedicated on/off for the eval bar below
+        // the board. separate from the arrow/move-prediction feature.
+        const evalBtn = widget.querySelector('#eval-btn');
+        if (evalBtn) evalBtn.addEventListener('click', function () {
+            T.evalBarOn = !T.evalBarOn;
+            syncEvalBarUI();
+            Ch.set({ evalBarOn: T.evalBarOn });
+            showStatusNotification(T.evalBarOn ? 'EVAL BAR: ON' : 'EVAL BAR: OFF');
+            updateInfoDisplay();
+            if (T.evalBarOn) {
+                // turning eval ON: make sure the engine is running and
+                // re-trigger analysis so the bar refreshes immediately.
+                T.currentFen = '';
+                if (D.setBoardEval) D.setBoardEval(true);
+            } else if (!T.engineOn && Eng && Eng.stopAnalysis) {
+                // both features off → stop the engine entirely
+                Eng.stopAnalysis();
+            }
         });
 
         // tab switching (text tabs at top).
@@ -448,12 +560,28 @@
                     widget.querySelectorAll('.tool-icon[data-tool="highlight"], .tool-icon[data-tool="arrow"]').forEach(i => i.classList.remove('active'));
                     this.classList.add('active');
                     T.arrowMode = tool === 'arrow' ? 'arrow' : 'highlight';
-                    chrome.storage.local.set({ arrowMode: T.arrowMode });
+                    Ch.set({ arrowMode: T.arrowMode });
                     showStatusNotification(`ARROW MODE: ${T.arrowMode.toUpperCase()}`);
                     if (T.arrows.length) D.draw(true);
                     updateInfoDisplay();
                 } else if (tool === 'eval') {
-                    showStatusNotification('EVAL BAR: PREMIUM ONLY');
+                    // toggle the persistent eval bar on/off
+                    T.evalBarOn = !T.evalBarOn;
+                    syncEvalBarUI();
+                    Ch.set({ evalBarOn: T.evalBarOn });
+                    showStatusNotification(T.evalBarOn ? 'EVAL BAR: ON' : 'EVAL BAR: OFF');
+                } else if (tool === 'movepct') {
+                    // toggle move% badges on/off
+                    T.movePctOn = !T.movePctOn;
+                    this.classList.toggle('active', T.movePctOn);
+                    // sync toggle cards
+                    widget.querySelectorAll('.eval-toggle-card[data-movepct]').forEach(card => {
+                        card.classList.toggle('active', card.dataset.movepct === (T.movePctOn ? 'on' : 'off'));
+                    });
+                    Ch.set({ movePctOn: T.movePctOn });
+                    // redraw badges immediately if any exist
+                    if (D.drawMovePct && T.topMoves.length) D.drawMovePct();
+                    showStatusNotification(T.movePctOn ? 'MOVE WIN%: ON' : 'MOVE WIN%: OFF');
                 } else if (tool === 'color') {
                     // cycle through colors on each click
                     const colors = ['#00f2ff', '#00ff88', '#ff00ff', '#ffff00', '#ff8800'];
@@ -461,7 +589,7 @@
                     const idx = colors.indexOf(T.arrowColor);
                     const next = (idx + 1) % colors.length;
                     T.arrowColor = colors[next];
-                    chrome.storage.local.set({ arrowColor: T.arrowColor });
+                    Ch.set({ arrowColor: T.arrowColor });
                     showStatusNotification(`ARROW COLOR: ${names[next]}`);
                     if (T.arrows.length) D.draw(true);
                     updateInfoDisplay();
@@ -487,7 +615,7 @@
                 widget.querySelectorAll('.theme-option').forEach(o => o.classList.remove('active'));
                 this.classList.add('active');
                 const theme = this.dataset.theme;
-                chrome.storage.local.set({ theme });
+                Ch.set({ theme });
                 applyTheme(theme);
                 // keep compact cards in sync
                 widget.querySelectorAll('.theme-card').forEach(c => { c.classList.remove('active'); if (c.dataset.theme === theme) c.classList.add('active'); });
@@ -503,7 +631,7 @@
                 widget.querySelectorAll('.theme-card').forEach(c => c.classList.remove('active'));
                 this.classList.add('active');
                 widget.querySelectorAll('.theme-option').forEach(o => { o.classList.remove('active'); if (o.dataset.theme === theme) o.classList.add('active'); });
-                chrome.storage.local.set({ theme });
+                Ch.set({ theme });
                 applyTheme(theme);
                 showStatusNotification(`THEME: ${theme.toUpperCase()}`);
             });
@@ -515,7 +643,7 @@
                 T.arrowColor = this.dataset.color;
                 widget.querySelectorAll('.color-box-advanced').forEach(b => b.classList.remove('selected'));
                 this.classList.add('selected');
-                chrome.storage.local.set({ arrowColor: T.arrowColor });
+                Ch.set({ arrowColor: T.arrowColor });
                 if (T.arrows.length) D.draw(true);
                 updateInfoDisplay();
             });
@@ -531,7 +659,7 @@
                 widget.querySelectorAll('.tool-icon[data-tool="highlight"], .tool-icon[data-tool="arrow"]').forEach(i => i.classList.remove('active'));
                 const toolIcon = widget.querySelector(`.tool-icon[data-tool="${T.arrowMode}"]`);
                 if (toolIcon) toolIcon.classList.add('active');
-                chrome.storage.local.set({ arrowMode: T.arrowMode });
+                Ch.set({ arrowMode: T.arrowMode });
                 showStatusNotification(`ARROW MODE: ${T.arrowMode.toUpperCase()}`);
                 if (T.arrows.length) D.draw(true);
                 updateInfoDisplay();
@@ -549,7 +677,7 @@
                 widget.querySelectorAll('.color-box-advanced').forEach(b => b.classList.remove('selected'));
                 const advBox = widget.querySelector(`.color-box-advanced[data-color="${T.arrowColor}"]`);
                 if (advBox) advBox.classList.add('selected');
-                chrome.storage.local.set({ arrowColor: T.arrowColor });
+                Ch.set({ arrowColor: T.arrowColor });
                 const names = { '#00f2ff': 'CYAN', '#00ff88': 'GREEN', '#ff00ff': 'MAGENTA', '#ffff00': 'YELLOW', '#ff8800': 'ORANGE' };
                 showStatusNotification(`ARROW COLOR: ${names[T.arrowColor] || 'CUSTOM'}`);
                 if (T.arrows.length) D.draw(true);
@@ -557,9 +685,36 @@
             });
         });
 
-        // eval toggle cards — locked in free version
-        widget.querySelectorAll('.eval-toggle-card').forEach(card => {
-            card.addEventListener('click', () => showStatusNotification('EVAL BAR: PREMIUM ONLY'));
+        // eval toggle cards — turn the persistent eval bar on/off
+        widget.querySelectorAll('.eval-toggle-card[data-evalbar]').forEach(card => {
+            card.addEventListener('click', function () {
+                T.evalBarOn = this.dataset.evalbar === 'on';
+                widget.querySelectorAll('.eval-toggle-card[data-evalbar]').forEach(c => c.classList.remove('active'));
+                this.classList.add('active');
+                const strip = widget.querySelector('#widget-eval-strip');
+                if (strip) strip.style.display = T.evalBarOn ? 'block' : 'none';
+                if (D.setBoardEval) D.setBoardEval(T.evalBarOn);
+                const toolIcon = widget.querySelector('.tool-icon[data-tool="eval"]');
+                if (toolIcon) toolIcon.classList.toggle('active', T.evalBarOn);
+                Ch.set({ evalBarOn: T.evalBarOn });
+                showStatusNotification(T.evalBarOn ? 'EVAL BAR: ON' : 'EVAL BAR: OFF');
+                updateInfoDisplay();
+            });
+        });
+
+        // move win% toggle cards — turn square badges on/off
+        widget.querySelectorAll('.eval-toggle-card[data-movepct]').forEach(card => {
+            card.addEventListener('click', function () {
+                T.movePctOn = this.dataset.movepct === 'on';
+                widget.querySelectorAll('.eval-toggle-card[data-movepct]').forEach(c => c.classList.remove('active'));
+                this.classList.add('active');
+                const toolIcon = widget.querySelector('.tool-icon[data-tool="movepct"]');
+                if (toolIcon) toolIcon.classList.toggle('active', T.movePctOn);
+                Ch.set({ movePctOn: T.movePctOn });
+                if (D.drawMovePct && T.topMoves.length) D.drawMovePct();
+                showStatusNotification(T.movePctOn ? 'MOVE WIN%: ON' : 'MOVE WIN%: OFF');
+                updateInfoDisplay();
+            });
         });
 
         // upgrade link in info tab
@@ -571,9 +726,17 @@
     // runs once after widget creation. if you add a new
     // persisted setting, load it here and apply it to the UI.
     function loadWidgetSettings() {
-        chrome.storage.local.get(['elo', 'arrowMode', 'arrowColor', 'theme', 'engineMode', 'queueMode'], (result) => {
+        Ch.get(['elo', 'arrowMode', 'arrowColor', 'theme', 'engineMode', 'queueMode', 'evalBarOn', 'movePctOn', 'engineOn'], (result) => {
             const widget = document.getElementById('titan-widget');
             if (!widget) return;
+
+            // restore master power switch (default: on)
+            T.engineOn = result.engineOn !== false;
+            const offBtn = widget.querySelector('#off-btn');
+            if (offBtn) {
+                offBtn.classList.toggle('active', !T.engineOn);
+                offBtn.textContent = T.engineOn ? 'OFF' : 'ON';
+            }
 
             // restore elo level
             if (result.elo) {
@@ -623,6 +786,27 @@
                 updateQueueDisplay();
             }
 
+            // restore eval bar visibility (default: on)
+            T.evalBarOn = result.evalBarOn !== false;
+            const evalStrip = widget.querySelector('#widget-eval-strip');
+            if (evalStrip) evalStrip.style.display = T.evalBarOn ? 'block' : 'none';
+            if (D.setBoardEval) D.setBoardEval(T.evalBarOn);
+            const evalBtnRestore = widget.querySelector('#eval-btn');
+            if (evalBtnRestore) evalBtnRestore.classList.toggle('active', T.evalBarOn);
+            const evalToolIcon = widget.querySelector('.tool-icon[data-tool="eval"]');
+            if (evalToolIcon) evalToolIcon.classList.toggle('active', T.evalBarOn);
+            widget.querySelectorAll('.eval-toggle-card[data-evalbar]').forEach(card => {
+                card.classList.toggle('active', card.dataset.evalbar === (T.evalBarOn ? 'on' : 'off'));
+            });
+
+            // restore move win% badge visibility (default: on)
+            T.movePctOn = result.movePctOn !== false;
+            const movePctToolIcon = widget.querySelector('.tool-icon[data-tool="movepct"]');
+            if (movePctToolIcon) movePctToolIcon.classList.toggle('active', T.movePctOn);
+            widget.querySelectorAll('.eval-toggle-card[data-movepct]').forEach(card => {
+                card.classList.toggle('active', card.dataset.movepct === (T.movePctOn ? 'on' : 'off'));
+            });
+
             // restore theme (default: dark)
             const theme = result.theme || 'dark';
             applyTheme(theme);
@@ -632,6 +816,10 @@
             if (themeCard) { widget.querySelectorAll('.theme-card').forEach(c => c.classList.remove('active')); themeCard.classList.add('active'); }
 
             updateInfoDisplay();
+            // render the board eval bar once so it shows the waiting
+            // state immediately (before the first engine info line) —
+            // the evalBarOn guard inside renderBoardEval hides it if off.
+            if (D.renderBoardEval) D.renderBoardEval({ white: 50, draw: 0, black: 50 }, '—', false);
         });
     }
 
@@ -646,6 +834,26 @@
         const statusText = widget.querySelector('#info-status .status-text');
         if (statusDot) statusDot.classList.toggle('connected', connected);
         if (statusText) statusText.textContent = connected ? 'Connected' : 'Disconnected';
+    }
+
+    // context gate indicator: on live-game (denied) pages the widget
+    // shows a clear BLOCKED status so the user understands why no
+    // analysis is happening. called from the monitor loop on state
+    // transitions only (not every tick).
+    function setContextBlocked(blocked) {
+        const widget = document.getElementById('titan-widget');
+        if (!widget) return;
+        const dot = widget.querySelector('#widget-status-dot');
+        const statusDot = widget.querySelector('#info-status .status-dot');
+        const statusText = widget.querySelector('#info-status .status-text');
+        if (blocked) {
+            if (dot) dot.classList.remove('connected');
+            if (statusDot) statusDot.classList.remove('connected');
+            if (statusText) statusText.textContent = 'Inactive — non-game page';
+        } else {
+            // restore normal status (engine may still be initializing)
+            updateStatus(!!window.TitanState.engineReady);
+        }
     }
 
     // toast notification that appears briefly at the top of the page.
@@ -674,6 +882,8 @@
             const names = { '#00f2ff': 'Cyan', '#00ff88': 'Green', '#ff00ff': 'Magenta', '#ffff00': 'Yellow', '#ff8800': 'Orange' };
             infoColor.innerHTML = `<span class="color-indicator" style="background:${T.arrowColor};"></span><span>${names[T.arrowColor] || 'Custom'}</span>`;
         }
+        const infoEval = widget.querySelector('#info-eval-bar');
+        if (infoEval) infoEval.textContent = T.evalBarOn ? `ON · ${T.evalMate !== null ? 'M' + Math.abs(T.evalMate) : (T.evalCp != null ? (T.evalCp / 100).toFixed(2) : '—')}` : 'OFF';
     }
 
     // update the queue button text to show move count
@@ -684,9 +894,108 @@
         if (queueBtn) queueBtn.textContent = T.queueMode ? `QUEUE (${T.moveQueue.length})` : 'QUEUE';
     }
 
+    // convert a centipawn score (from White's perspective) into
+    // win/draw/loss probabilities. this uses the standard lichess-style
+    // logistic model:  win% + draw% + loss% always sums to 100.
+    // a draw is most likely at 0.00 and shrinks as the eval diverges.
+    function wdlFromCentiPawns(cp) {
+        // "winning chances" in [-1, 1] — lichess logistic curve
+        const winningChances = 2 / (1 + Math.exp(-0.00368208 * cp)) - 1;
+        // draw rate: peaks (~30%) at equality, decays with |cp|
+        const draw = 0.30 * Math.exp(-Math.pow(cp / 300, 2));
+        const white = (0.5 + 0.5 * winningChances) * (1 - draw);
+        const black = (0.5 - 0.5 * winningChances) * (1 - draw);
+        return {
+            white: Math.round(white * 100),
+            draw: Math.round(draw * 100),
+            black: Math.round(black * 100)
+        };
+    }
+
+    // render the live evaluation into the EVAL tab and the persistent
+    // strip. called by engine.js every time stockfish reports a score.
+    function updateEvalDisplay() {
+        const widget = document.getElementById('titan-widget');
+        if (!widget) return;
+
+        let wdl, scoreText, barPct;
+        // CONTEXT GATE: in denied contexts (live human games etc.) never
+        // display real engine eval — render the neutral waiting state.
+        const ctxBlocked = window.TitanContext && !window.TitanContext.isAllowed();
+        const hasEval = !ctxBlocked && (T.evalCp !== null || T.evalMate !== null);
+
+        if (!hasEval) {
+            wdl = { white: 50, draw: 0, black: 50 };
+            scoreText = '—';
+            barPct = 50;
+        } else if (T.evalMate !== null) {
+            // forced mate: near-certain win for the mating side
+            const whiteMate = T.evalMate > 0;
+            wdl = whiteMate ? { white: 99, draw: 1, black: 0 } : { white: 0, draw: 1, black: 99 };
+            scoreText = (T.evalMate > 0 ? 'M' + T.evalMate : 'M' + T.evalMate);
+            barPct = whiteMate ? 99 : 1;
+        } else {
+            wdl = wdlFromCentiPawns(T.evalCp);
+            scoreText = (T.evalCp > 0 ? '+' : '') + (T.evalCp / 100).toFixed(2);
+            barPct = Math.max(0, Math.min(100, 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * T.evalCp)) - 1)));
+        }
+
+        const applyToBar = (whiteEl, drawEl, blackEl, markerEl) => {
+            if (whiteEl) whiteEl.style.width = wdl.white + '%';
+            if (drawEl) drawEl.style.width = wdl.draw + '%';
+            if (blackEl) blackEl.style.width = wdl.black + '%';
+            if (markerEl) markerEl.style.left = barPct + '%';
+        };
+
+        // full EVAL tab
+        const scoreEl = widget.querySelector('#eval-score');
+        if (scoreEl) scoreEl.textContent = scoreText;
+        const bestEl = widget.querySelector('#eval-best');
+        if (bestEl) bestEl.textContent = (!ctxBlocked && T.evalDepth !== null) ? `Depth ${T.evalDepth}` : '—';
+        applyToBar(
+            widget.querySelector('#eval-bar-white'),
+            widget.querySelector('#eval-bar-draw'),
+            widget.querySelector('#eval-bar-black'),
+            widget.querySelector('#eval-bar-marker')
+        );
+        const pW = widget.querySelector('#eval-pct-white');
+        const pD = widget.querySelector('#eval-pct-draw');
+        const pB = widget.querySelector('#eval-pct-black');
+        if (pW) pW.textContent = wdl.white + '%';
+        if (pD) pD.textContent = wdl.draw + '%';
+        if (pB) pB.textContent = wdl.black + '%';
+        const hintEl = widget.querySelector('#eval-hint');
+        if (hintEl) hintEl.textContent = ctxBlocked
+            ? 'Engine inactive on this page'
+            : (hasEval
+                ? (T.evalMate !== null ? 'Forced mate detected' : 'Live engine evaluation')
+                : 'Waiting for engine analysis…');
+
+        // persistent strip (shown whenever evalBarOn is true)
+        applyToBar(
+            widget.querySelector('#eval-strip-white'),
+            widget.querySelector('#eval-strip-draw'),
+            widget.querySelector('#eval-strip-black'),
+            widget.querySelector('#eval-strip-marker')
+        );
+        const sW = widget.querySelector('#eval-strip-pct-white');
+        const sD = widget.querySelector('#eval-strip-pct-draw');
+        const sB = widget.querySelector('#eval-strip-pct-black');
+        if (sW) sW.textContent = wdl.white + '%';
+        if (sD) sD.textContent = wdl.draw + '%';
+        if (sB) sB.textContent = wdl.black + '%';
+
+        // info tab eval row
+        const infoEval = widget.querySelector('#info-eval-bar');
+        if (infoEval) infoEval.textContent = T.evalBarOn ? `ON · ${scoreText}` : 'OFF';
+
+        // board eval bar (W/D/L overlay on the board itself)
+        if (D.renderBoardEval) D.renderBoardEval(wdl, scoreText, hasEval);
+    }
+
     // public API — other modules call these to update the widget
     window.TitanWidget = {
         createFloatingWidget, updateStatus, showStatusNotification,
-        updateInfoDisplay, updateQueueDisplay
+        updateInfoDisplay, updateQueueDisplay, updateEvalDisplay, setContextBlocked
     };
 })();

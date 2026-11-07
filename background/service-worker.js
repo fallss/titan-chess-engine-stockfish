@@ -26,7 +26,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 chrome.tabs.sendMessage(tab.id, {
                     type: 'SET_ELO',
                     elo: msg.elo
-                }).catch(() => {});
+                }).catch(() => { });
             });
         });
         sendResponse({ success: true });
@@ -44,13 +44,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 chrome.tabs.sendMessage(tab.id, {
                     type: 'SET_EVAL_BAR',
                     enabled: msg.enabled
-                }).catch(() => {});
+                }).catch(() => { });
             });
         });
         sendResponse({ success: true });
     } else if (msg.type === 'GET_STATUS') {
         sendResponse({ ready: true, elo: currentElo });
     }
-    
+
     return true;
 });

@@ -1,0 +1,77 @@
+{
+  "bootMs": 364,
+  "results": [
+    {
+      "id": 1,
+      "name": "opening",
+      "tStart": 1793946994326,
+      "maxDepth": 18,
+      "nodes": 1501459,
+      "nps": 1499959,
+      "time": 1001,
+      "scoreCp": 116,
+      "bestmove": "e2e4",
+      "pv": "",
+      "error": null,
+      "wallMs": 1005
+    },
+    {
+      "id": 2,
+      "name": "middlegame",
+      "tStart": 1793946995331,
+      "maxDepth": 19,
+      "nodes": 1660360,
+      "nps": 1658701,
+      "time": 1001,
+      "scoreCp": -215,
+      "bestmove": "f1e2",
+      "pv": "",
+      "error": null,
+      "wallMs": 1004
+    },
+    {
+      "id": 3,
+      "name": "tactics",
+      "tStart": 1793946996335,
+      "maxDepth": 19,
+      "nodes": 1676338,
+      "nps": 1674663,
+      "time": 1001,
+      "scoreCp": 360,
+      "bestmove": "d1c1",
+      "pv": "",
+      "error": null,
+      "wallMs": 1004
+    },
+    {
+      "id": 4,
+      "name": "endgame",
+      "tStart": 1793946997339,
+      "maxDepth": 39,
+      "nodes": 8183295,
+      "nps": 8175119,
+      "time": 1001,
+      "scoreCp": 0,
+      "bestmove": "e3d3",
+      "pv": "",
+      "error": null,
+      "wallMs": 1004
+    },
+    {
+      "id": 5,
+      "name": "queens",
+      "tStart": 1793946998343,
+      "maxDepth": 20,
+      "nodes": 2974778,
+      "nps": 2971806,
+      "time": 1001,
+      "scoreCp": 1733,
+      "bestmove": "d4b6",
+      "pv": "",
+      "error": null,
+      "wallMs": 1002
+    }
+  ],
+  "stderr": "",
+  "exitCode": 0
+}

@@ -4,7 +4,7 @@
 //
 // this is the last file loaded (see manifest.json content_scripts
 // order). by the time this runs, all other modules are ready:
-//   state.js → board.js → drawing.js → engine.js → widget.js
+//   state.js → context.js → board.js → drawing.js → engine.js → widget.js
 //
 // this file does three things:
 //   1. runs the monitor loop (polls the board every 100ms)
@@ -29,35 +29,6 @@
 // 100ms is a good balance between responsiveness and CPU usage.
 // going lower (50ms) makes it snappier but burns more cycles.
 // going higher (200ms+) feels laggy on fast time controls.
-//
-// === NEW GAME DETECTION ===
-//
-// we detect a new game by checking if the current FEN is the
-// starting position AND the previous FEN was NOT. this avoids
-// false positives when the page first loads (which also shows
-// the starting position).
-//
-// on new game: we disconnect the mutation observer, clear all
-// cached board references, send `ucinewgame` to reset the hash
-// table, and re-run setup() to find the new board element.
-//
-// === BOOT SEQUENCE ===
-//
-// 1. load persisted settings from chrome.storage
-// 2. init stockfish engine (async, takes ~1-2 seconds)
-// 3. after 1 second delay: create canvas, inject widget, start monitor
-//
-// the 1-second delay gives chess.com time to render the board.
-// without it, findBoard() often returns null on page load.
-//
-// === WHAT NOT TO CHANGE ===
-//
-// - the setTimeout delay (1000ms) — lower values cause the
-//   widget to inject before the board exists
-// - the monitor interval (100ms) — tested across bullet, blitz,
-//   and rapid; this is the sweet spot
-// - the message listener return value (must return true for
-//   async chrome.runtime.onMessage compatibility)
 // ============================================================
 
 (function () {
@@ -66,14 +37,57 @@
     const D = window.TitanDraw;
     const Eng = window.TitanEngine;
     const W = window.TitanWidget;
+    const Ch = window.TitanChrome;   // safe chrome.* wrapper (see state.js)
+    const Ctx = window.TitanContext; // context detection (always-allow)
+
+    // SPA navigation detection: chess.com changes URL without reload.
+    // track the last URL so we can detect page changes and re-discover
+    // the board, re-inject the widget if it was removed, etc.
+    let lastMonitorUrl = location.href;
 
     // core polling loop — called every 100ms.
     // reads the board state and decides what to do.
     // wrapped in try/catch so a DOM error doesn't kill the loop.
     function monitor() {
         try {
+            // update context label (always allowed, never blocks)
+            Ctx.update();
+
+            // SPA navigation detection: if URL changed, clear stale
+            // board references and re-discover the board element.
+            const currentUrl = location.href;
+            if (currentUrl !== lastMonitorUrl) {
+                lastMonitorUrl = currentUrl;
+                // board element likely changed — force re-discovery
+                T.boardElement = null;
+                T.boardCache = null;
+                // re-inject widget if chess.com removed it during navigation
+                if (!document.getElementById('titan-widget')) {
+                    W.createFloatingWidget();
+                }
+            }
+
+            // ensure engine is initialized (idempotent — returns immediately if already running)
+            if (!T.engineInitStarted) {
+                T.engineInitStarted = true;
+                Eng.initEngine();
+            }
+
             const fen = B.getFen(), rect = B.getBoardRect();
             if (!fen || !rect) return;
+
+            // arrow feature OFF: keep the board clean (no arrows, no
+            // badges) but DO NOT return — the eval bar is independent
+            // and must keep updating while the engine runs for it.
+            if (!T.engineOn) {
+                if (T.arrows.length || T.pendingArrows.length || T.topMoves.length) {
+                    T.arrows = [];
+                    T.pendingArrows = [];
+                    T.topMoves = [];
+                    D.clearArrows();
+                    D.clearMovePct();
+                }
+            }
 
             const isStart = fen.includes('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR');
             const wasNotStart = T.previousFen && !T.previousFen.includes('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR');
@@ -85,12 +99,17 @@
                 T.boardElement = T.boardCache = T.playerColor = T.myTurnColor = null;
                 T.moveQueue = [];
                 T.pendingArrows = [];
+                T.topMoves = [];
+                T.pvResults = null;
+                // new game → position cache from the previous game is invalid
+                if (Eng.clearCache) Eng.clearCache();
                 // reset castling tracking for the new game
                 T.castleWhiteKingMoved = T.castleBlackKingMoved = false;
                 T.castleWhiteRookAMoved = T.castleWhiteRookHMoved = false;
                 T.castleBlackRookAMoved = T.castleBlackRookHMoved = false;
                 W.updateQueueDisplay();
                 D.clearArrows();
+                D.clearMovePct();
                 // reset hash table on new game so stale positions don't pollute results
                 if (T.stockfishWorker && T.engineReady) {
                     T.stockfishWorker.postMessage('ucinewgame');
@@ -100,16 +119,21 @@
 
             const turn = fen.split(' ')[1] || 'w';
             T.myTurnColor = B.getPlayerColor();
-            const isMyTurn = (turn === T.myTurnColor);
+            const ctx = Ctx.getContext();
+            const isAnalysisLike = (ctx === 'analysis' || ctx === 'review' || ctx === 'puzzle' || ctx === 'practice');
+            const isMyTurn = isAnalysisLike || (turn === T.myTurnColor);
 
             // position changed — new move was made
             if (fen !== T.currentFen) {
                 T.previousFen = T.currentFen;
                 T.currentFen = fen;
                 T.pendingArrows = [];
+                T.topMoves = [];
+                T.pvResults = null;
                 D.clearArrows();
+                D.clearMovePct();
 
-                // only analyze on our turn (or pre-analyze in queue mode)
+                // analyze on our turn, or pre-analyze in queue mode
                 if (isMyTurn) {
                     Eng.analyze(fen);
                 } else if (T.queueMode) {
@@ -117,9 +141,10 @@
                 }
             }
 
-            // opponent's turn — make sure arrows are cleared
+            // opponent's turn — make sure arrows & move% badges are cleared
             if (!isMyTurn && T.arrows.length > 0) {
                 D.clearArrows();
+                D.clearMovePct();
             }
 
             // our turn — restore pending arrows if they got cleared
@@ -127,6 +152,7 @@
                 T.arrows = [...T.pendingArrows];
                 T.forceRedraw = true;
                 D.draw(true);
+                if (D.drawMovePct) D.drawMovePct();
             }
 
             // our turn, no arrows, not analyzing — trigger analysis
@@ -157,32 +183,41 @@
     }
 
     // handle messages from the popup or background script.
-    // the popup sends SET_ELO when user changes elo there,
-    // CLEAR_ARROWS to manually wipe arrows, and SET_ARROW_COLOR
-    // for color changes from the popup UI.
-    chrome.runtime.onMessage.addListener((msg) => {
+    Ch.onMessage((msg) => {
         if (!msg || typeof msg.type !== 'string') return true;
         if (msg.type === 'SET_ELO' && msg.elo) Eng.setElo(msg.elo);
         else if (msg.type === 'CLEAR_ARROWS') D.clearArrows();
         else if (msg.type === 'SET_ARROW_COLOR' && msg.color) {
             T.arrowColor = msg.color;
-            chrome.storage.local.set({ arrowColor: msg.color });
+            Ch.set({ arrowColor: msg.color });
             if (T.arrows.length) D.draw(true);
+        } else if (msg.type === 'SET_ARROW_MODE' && msg.mode) {
+            T.arrowMode = msg.mode;
+            Ch.set({ arrowMode: msg.mode });
+            if (T.arrows.length) D.draw(true);
+        } else if (msg.type === 'SET_EVAL_BAR') {
+            T.evalBarOn = !!msg.enabled;
+            Ch.set({ evalBarOn: T.evalBarOn });
+            if (D.setBoardEval) D.setBoardEval(T.evalBarOn);
+            if (W.updateEvalDisplay) W.updateEvalDisplay();
         }
         return true; // required for async message handling
     });
 
     // === BOOT ===
-    // load saved settings first, then start the engine.
-    // engine init is async (fetches WASM, creates blob worker).
-    chrome.storage.local.get(['arrowColor', 'elo', 'arrowMode'], (r) => {
+    // load saved settings first, then immediately init the engine
+    // (no lazy init — start ASAP for fastest latency).
+    Ch.get(['arrowColor', 'elo', 'arrowMode'], (r) => {
         if (r.arrowColor) T.arrowColor = r.arrowColor;
         if (r.arrowMode) T.arrowMode = r.arrowMode;
         if (r.elo) T.currentElo = r.elo;
-        Eng.initEngine();
     });
 
-    // wait for chess.com to finish rendering before we inject.
+    // start engine immediately for fastest response time
+    T.engineInitStarted = true;
+    Eng.initEngine();
+
+    // wait for chess.com to finish rendering before we inject the widget.
     // 1 second is enough for most connections; on very slow pages
     // the monitor loop will just return early until the board appears.
     setTimeout(() => {

@@ -1,0 +1,10 @@
+
+=== TITAN CHESS — Stockfish WASM Benchmark ===
+mode        : movetime 1000ms
+boot latency: 408 ms (spawn → uciok)
+
+ pos  name          depth   nodes       nps       eng.ms  wall.ms  score    bestmove  pv
+ ---- ------------- ------- ---------- ---------- ------- ------- -------- -------- --------------------
+
+
+JSON report written: /home/ifhalfaizi/Downloads/TitanChessEngine/bench/report-full.json

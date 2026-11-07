@@ -370,7 +370,7 @@
 /* Action Bar */
 .widget-actions {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 4px;
     padding: 6px;
     background: rgba(0, 0, 0, 0.2);
@@ -405,6 +405,20 @@
     background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
     color: #fff;
     border-color: #4a90e2;
+}
+
+.action-btn.off {
+    background: rgba(30, 30, 30, 0.6);
+    color: #999;
+    border-color: #555;
+}
+
+/* master OFF is a kill switch — when active, it glows red */
+.action-btn.off.active {
+    background: linear-gradient(135deg, #ff3b30 0%, #d32f2f 100%);
+    color: #fff;
+    border-color: #ff3b30;
+    box-shadow: 0 0 10px rgba(255, 59, 48, 0.6);
 }
 
 .action-btn:hover {
@@ -1323,3 +1337,253 @@
 .info-container::-webkit-scrollbar-thumb:hover {
     background: rgba(var(--accent-rgb), 0.5);
 }
+
+/* ==================== LIVE EVALUATION (eval tab + strip) ==================== */
+
+/* -- persistent strip shown at the top of the widget body -- */
+#titan-widget .widget-eval-strip {
+    padding: 6px 10px 8px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: rgba(0, 0, 0, 0.15);
+}
+
+#titan-widget .eval-strip-bar,
+#titan-widget .eval-bar {
+    position: relative;
+    height: 10px;
+    border-radius: 5px;
+    overflow: hidden;
+    background: #111;
+    display: flex;
+    flex-direction: row;
+}
+
+#titan-widget .eval-strip-white,
+#titan-widget .eval-bar-white {
+    height: 100%;
+    background: linear-gradient(180deg, #ffffff, #d7d7d7);
+    flex-shrink: 0;
+}
+
+#titan-widget .eval-strip-draw,
+#titan-widget .eval-bar-draw {
+    height: 100%;
+    background: linear-gradient(180deg, #9a9a9a, #7a7a7a);
+    flex-shrink: 0;
+}
+
+#titan-widget .eval-strip-black,
+#titan-widget .eval-bar-black {
+    height: 100%;
+    background: linear-gradient(180deg, #3a3a3a, #111111);
+    flex-shrink: 0;
+}
+
+#titan-widget .eval-strip-marker,
+#titan-widget .eval-bar-marker {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 4px rgba(var(--accent-rgb), 0.9);
+    transition: left 0.15s ease;
+    pointer-events: none;
+}
+
+#titan-widget .eval-strip-text {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    font-size: 9px;
+    letter-spacing: 0.3px;
+}
+
+#titan-widget .eval-strip-label {
+    color: var(--text-secondary);
+}
+
+#titan-widget .eval-strip-label b {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+/* -- full EVAL tab panel -- */
+#titan-widget .eval-readout {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+#titan-widget .eval-score {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: 1px;
+    line-height: 1;
+}
+
+#titan-widget .eval-best {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+#titan-widget .eval-bar {
+    height: 16px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+#titan-widget .eval-percents {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 11px;
+}
+
+#titan-widget .eval-pct {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    color: var(--text-secondary);
+}
+
+#titan-widget .eval-pct b {
+    font-size: 14px;
+    font-weight: 800;
+}
+
+#titan-widget .eval-pct-white b { color: #ffffff; }
+#titan-widget .eval-pct-draw b { color: #b0b0b0; }
+#titan-widget .eval-pct-black b { color: #555555; }
+
+#titan-widget .eval-hint {
+    margin-top: 8px;
+    text-align: center;
+    font-size: 9px;
+    color: var(--text-muted);
+}
+
+#titan-widget .info-value.highlight {
+    color: var(--accent);
+}
+
+/* ============================================================
+   move% badges (top-moves with win% overlaid on board squares)
+   ============================================================
+   percentage badges shown on the destination square of each
+   candidate move from multi-PV analysis. color-coded by strength:
+   green = winning, cyan/grey = neutral, orange/red = losing.
+   best move gets a ★ indicator. these live in a dedicated overlay
+   container inside the board element. */
+.titan-movepct-badge {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: default;
+    user-select: none;
+    transition: transform 0.2s ease;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.5));
+}
+
+/* best move: slightly larger and brighter */
+.titan-movepct-badge:first-child {
+    transform: scale(1.25);
+}
+
+.titan-movepct-badge span {
+    line-height: 1;
+    text-align: center;
+}
+
+/* ============================================================
+   board eval bar (W/D/L overlay floating just below the board)
+   ============================================================
+   a slim glassy bar positioned fixed below the board using
+   getBoundingClientRect() coordinates. updated on render +
+   scroll/resize to stay glued to the board. pointer-events
+   off so it never blocks clicks. colors are hardcoded (no
+   data-theme vars) since it's outside #titan-widget. */
+.titan-board-eval {
+    position: fixed;
+    height: 26px;
+    display: none;  /* hidden until first eval or toggle ON */
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px 0 6px;
+    box-sizing: border-box;
+    z-index: 2147483000;
+    pointer-events: none !important;
+    opacity: 0.92;
+    transform-origin: top left;
+    transition: opacity 0.2s ease;
+    background: rgba(10, 15, 25, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0 0 10px 10px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+.titan-board-eval .tbe-score {
+    flex: 0 0 auto;
+    min-width: 46px;
+    padding: 2px 6px;
+    box-sizing: border-box;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 800;
+    color: #ffffff;
+    background: rgba(0, 242, 255, 0.14);
+    border: 1px solid rgba(0, 242, 255, 0.35);
+    border-radius: 5px;
+    letter-spacing: 0.3px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.titan-board-eval .tbe-bar {
+    flex: 1 1 auto;
+    display: flex;
+    height: 14px;
+    border-radius: 7px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.titan-board-eval .tbe-seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    overflow: hidden;
+    transition: width 0.25s ease;
+    min-width: 0;
+}
+
+.titan-board-eval .tbe-seg span {
+    font-size: 10px;
+    font-weight: 800;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.titan-board-eval .tbe-white { background: linear-gradient(180deg, #f5f7fa 0%, #c8cdd4 100%); }
+.titan-board-eval .tbe-white span { color: #1a1d24; text-shadow: none; }
+
+.titan-board-eval .tbe-draw { background: linear-gradient(180deg, #9aa0aa 0%, #6b7280 100%); }
+.titan-board-eval .tbe-draw span { color: #ffffff; }
+
+.titan-board-eval .tbe-black { background: linear-gradient(180deg, #3a3f47 0%, #171a1f 100%); }
+.titan-board-eval .tbe-black span { color: #e5e7eb; }
+
+/* hide any leftover segment labels when a segment collapses to 0 width */
+.titan-board-eval .tbe-seg[style*="width: 0%"] span,
+.titan-board-eval .tbe-seg[style*="width:0%"] span {
+    display: none;
+}
+
