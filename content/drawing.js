@@ -477,8 +477,47 @@
         if (threatOverlay) threatOverlay.innerHTML = '';
     }
 
+    // ============================================================
+    // Inovasi 2: Stealth Board Pill (Humanize Thinking Indicator)
+    // ============================================================
+    let stealthPillEl = null;
+
+    function ensureStealthPill() {
+        const board = B.findBoard();
+        if (!board) return null;
+        if (stealthPillEl && board.contains(stealthPillEl)) return stealthPillEl;
+        if (stealthPillEl && stealthPillEl.parentNode) {
+            try { stealthPillEl.parentNode.removeChild(stealthPillEl); } catch (e) {}
+        }
+        stealthPillEl = document.createElement('div');
+        stealthPillEl.className = 'titan-stealth-pill';
+        board.style.position = board.style.position || 'relative';
+        board.appendChild(stealthPillEl);
+        return stealthPillEl;
+    }
+
+    function renderStealthPill(remainingMs, totalMs, pct, isReady) {
+        const pill = ensureStealthPill();
+        if (!pill) return;
+
+        pill.style.display = 'flex';
+        if (isReady || remainingMs <= 0) {
+            pill.className = 'titan-stealth-pill ready';
+            pill.innerHTML = '<span class="stealth-icon">🥷</span><span>SAFE TO PLAY</span>';
+        } else {
+            pill.className = 'titan-stealth-pill thinking';
+            const sec = (remainingMs / 1000).toFixed(1);
+            pill.innerHTML = `<span class="stealth-icon">🥷</span><span>Thinking: ${sec}s</span>`;
+        }
+    }
+
+    function clearStealthPill() {
+        if (stealthPillEl) stealthPillEl.style.display = 'none';
+    }
+
     window.TitanDraw = {
         draw, clearArrows, initCanvas, renderBoardEval, setBoardEval,
-        drawMovePct, clearMovePct, drawThreats, clearThreats
+        drawMovePct, clearMovePct, drawThreats, clearThreats,
+        renderStealthPill, clearStealthPill
     };
 })();

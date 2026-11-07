@@ -147,8 +147,23 @@
                             <div class="action-btn hide" id="hide-btn">HIDE</div>
                             <div class="action-btn auto active" id="auto-btn">AUTO</div>
                             <div class="action-btn queue" id="queue-btn">QUEUE</div>
+                            <div class="action-btn stealth" id="stealth-btn" title="Humanize Stealth Anti-Cheat Evasion">🥷 STEALTH</div>
                             <div class="action-btn off" id="off-btn">OFF</div>
                             <div class="action-btn eval active" id="eval-btn">EVAL</div>
+                        </div>
+                        <div class="titan-stealth-card" id="titan-stealth-card" style="display:none">
+                            <div class="stealth-card-header">
+                                <span class="stealth-badge">🥷 STEALTH ACTIVE</span>
+                                <span class="stealth-caps" id="stealth-caps">Target CAPS: 85% — 91%</span>
+                            </div>
+                            <div class="stealth-timer-row">
+                                <span class="stealth-timer-label" id="stealth-timer-label">Human Delay:</span>
+                                <span class="stealth-timer-val" id="stealth-timer-val">0.0s</span>
+                                <span class="stealth-timer-status" id="stealth-timer-status">WAIT</span>
+                            </div>
+                            <div class="stealth-progress-bar">
+                                <div class="stealth-progress-fill" id="stealth-progress-fill"></div>
+                            </div>
                         </div>
                     </div>
                     <!-- INFO tab: read-only status display -->
@@ -464,6 +479,36 @@
             Ch.set({ queueMode: T.queueMode });
         });
 
+        // STEALTH mode toggle: Humanize Anti-Cheat Evasion
+        function syncStealthUI() {
+            const btn = widget.querySelector('#stealth-btn');
+            if (btn) btn.classList.toggle('active', !!T.stealthOn);
+            const tool = widget.querySelector('.tool-icon[data-tool="stealth"]');
+            if (tool) tool.classList.toggle('active', !!T.stealthOn);
+
+            const card = widget.querySelector('#titan-stealth-card');
+            if (card) {
+                card.style.display = T.stealthOn ? 'block' : 'none';
+                const capsEl = widget.querySelector('#stealth-caps');
+                if (capsEl && window.TitanStealth) {
+                    capsEl.textContent = `Target CAPS: ${window.TitanStealth.getTargetCaps(T.currentElo)}`;
+                }
+            }
+
+            if (!T.stealthOn) {
+                if (window.TitanStealth) window.TitanStealth.stopMoveDelay();
+                if (D.clearStealthPill) D.clearStealthPill();
+            }
+        }
+
+        const stealthBtn = widget.querySelector('#stealth-btn');
+        if (stealthBtn) stealthBtn.addEventListener('click', function () {
+            T.stealthOn = !T.stealthOn;
+            syncStealthUI();
+            showStatusNotification(T.stealthOn ? 'STEALTH MODE: ON' : 'STEALTH MODE: OFF');
+            Ch.set({ stealthOn: T.stealthOn });
+        });
+
         // OFF switch: toggles the ARROW/move-prediction feature only.
         // when OFF, arrows and move% badges are cleared and the engine
         // stops drawing them — but the eval bar keeps working if its
@@ -597,8 +642,9 @@
                     if (!T.threatRadarOn && D.clearThreats) D.clearThreats();
                 } else if (tool === 'stealth') {
                     T.stealthOn = !T.stealthOn;
-                    this.classList.toggle('active', T.stealthOn);
+                    syncStealthUI();
                     showStatusNotification(T.stealthOn ? 'STEALTH MODE: ON' : 'STEALTH MODE: OFF');
+                    Ch.set({ stealthOn: T.stealthOn });
                 } else if (tool === 'coach') {
                     T.voiceCoachOn = !T.voiceCoachOn;
                     this.classList.toggle('active', T.voiceCoachOn);
@@ -1031,10 +1077,35 @@
         }
     }
 
+    function updateStealthTimer(remainingMs, totalMs, pct, isReady) {
+        const widget = document.getElementById('titan-widget');
+        if (!widget) return;
+        const valEl = widget.querySelector('#stealth-timer-val');
+        const statusEl = widget.querySelector('#stealth-timer-status');
+        const fillEl = widget.querySelector('#stealth-progress-fill');
+
+        if (isReady || remainingMs <= 0) {
+            if (valEl) valEl.textContent = '0.0s';
+            if (statusEl) {
+                statusEl.textContent = 'READY TO MOVE';
+                statusEl.className = 'stealth-timer-status ready';
+            }
+            if (fillEl) fillEl.style.width = '100%';
+        } else {
+            const sec = (remainingMs / 1000).toFixed(1);
+            if (valEl) valEl.textContent = `${sec}s`;
+            if (statusEl) {
+                statusEl.textContent = 'THINKING';
+                statusEl.className = 'stealth-timer-status';
+            }
+            if (fillEl) fillEl.style.width = `${pct}%`;
+        }
+    }
+
     // public API — other modules call these to update the widget
     window.TitanWidget = {
         createFloatingWidget, updateStatus, showStatusNotification,
         updateInfoDisplay, updateQueueDisplay, updateEvalDisplay, setContextBlocked,
-        updateCoachText
+        updateCoachText, updateStealthTimer
     };
 })();

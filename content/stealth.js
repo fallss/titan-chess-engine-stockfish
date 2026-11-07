@@ -81,9 +81,53 @@
         return best.move || (best.from + best.to);
     }
 
+    // Get expected human CAPS (accuracy) target for current Elo
+    function getTargetCaps(eloStr) {
+        const elo = parseInt(eloStr || '1500', 10);
+        if (elo <= 1200) return '70% — 76% (Club Player)';
+        if (elo <= 1600) return '78% — 84% (Intermediate)';
+        if (elo <= 2000) return '85% — 91% (Natural GM)';
+        return '92% — 97% (Master Class)';
+    }
+
+    // Live countdown timer manager
+    let activeTimerId = null;
+    let delayEndTime = 0;
+    let currentTotalDelay = 0;
+
+    function startMoveDelay(moveContext, onTick, onComplete) {
+        if (activeTimerId) clearInterval(activeTimerId);
+        currentTotalDelay = calculateHumanDelay(moveContext || {});
+        delayEndTime = Date.now() + currentTotalDelay;
+
+        function tick() {
+            const remaining = Math.max(0, delayEndTime - Date.now());
+            const pct = Math.min(100, Math.round(((currentTotalDelay - remaining) / currentTotalDelay) * 100));
+            if (onTick) onTick(remaining, currentTotalDelay, pct);
+
+            if (remaining <= 0) {
+                clearInterval(activeTimerId);
+                activeTimerId = null;
+                if (onComplete) onComplete();
+            }
+        }
+
+        tick();
+        activeTimerId = setInterval(tick, 80);
+    }
+
+    function stopMoveDelay() {
+        if (activeTimerId) clearInterval(activeTimerId);
+        activeTimerId = null;
+    }
+
     // Public API
     window.TitanStealth = {
         calculateHumanDelay,
-        selectHumanizedMove
+        selectHumanizedMove,
+        getTargetCaps,
+        startMoveDelay,
+        stopMoveDelay
     };
 })();
+

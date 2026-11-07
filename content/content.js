@@ -135,6 +135,7 @@
                 D.clearMovePct();
                 if (D.clearThreats) D.clearThreats();
                 if (window.TitanPhantom) window.TitanPhantom.clearPhantom();
+                if (D.clearStealthPill) D.clearStealthPill();
 
                 // Inovasi 1 & 5: Threat Radar & Haptic Feedback
                 if (T.threatRadarOn && window.TitanThreat) {
@@ -162,6 +163,7 @@
             if (!isMyTurn && T.arrows.length > 0) {
                 D.clearArrows();
                 D.clearMovePct();
+                if (D.clearStealthPill) D.clearStealthPill();
             }
 
             // our turn — restore pending arrows if they got cleared

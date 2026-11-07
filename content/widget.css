@@ -1654,4 +1654,127 @@
     }
 }
 
+/* Inovasi 2: Board Stealth Pill */
+.titan-stealth-pill {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 105;
+    pointer-events: none;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: rgba(10, 15, 25, 0.90);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(0, 242, 255, 0.4);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 11px;
+    font-weight: 800;
+    color: #fff;
+    transition: all 0.25s ease;
+}
+
+.titan-stealth-pill.thinking {
+    border-color: rgba(255, 170, 0, 0.8);
+    color: #ffcc00;
+    box-shadow: 0 0 14px rgba(255, 170, 0, 0.45);
+}
+
+.titan-stealth-pill.ready {
+    border-color: rgba(0, 255, 136, 0.9);
+    color: #00ff88;
+    background: rgba(0, 35, 18, 0.92);
+    box-shadow: 0 0 16px rgba(0, 255, 136, 0.6);
+    animation: titan-stealth-pulse 1.2s infinite alternate;
+}
+
+@keyframes titan-stealth-pulse {
+    0% { transform: scale(0.97); }
+    100% { transform: scale(1.03); }
+}
+
+/* Inovasi 2: Widget Dashboard Stealth Card */
+.titan-stealth-card {
+    margin: 8px 0;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(15, 20, 35, 0.85);
+    border: 1px solid rgba(0, 242, 255, 0.3);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.stealth-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.stealth-badge {
+    font-size: 11px;
+    font-weight: 800;
+    color: #00f2ff;
+    letter-spacing: 0.5px;
+}
+
+.stealth-caps {
+    font-size: 10px;
+    font-weight: 700;
+    color: #aaa;
+}
+
+.stealth-timer-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    margin-bottom: 6px;
+}
+
+.stealth-timer-val {
+    font-weight: 800;
+    color: #ffcc00;
+}
+
+.stealth-timer-status {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255, 170, 0, 0.2);
+    color: #ffcc00;
+}
+
+.stealth-timer-status.ready {
+    background: rgba(0, 255, 136, 0.2);
+    color: #00ff88;
+}
+
+.stealth-progress-bar {
+    width: 100%;
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+}
+
+.stealth-progress-fill {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, #ffbb00 0%, #00ff88 100%);
+    transition: width 0.1s linear;
+}
+
+.action-btn.stealth.active {
+    background: rgba(0, 242, 255, 0.25) !important;
+    border-color: #00f2ff !important;
+    color: #00f2ff !important;
+    box-shadow: 0 0 10px rgba(0, 242, 255, 0.4) !important;
+}
+
+
 

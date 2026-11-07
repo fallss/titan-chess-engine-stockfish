@@ -489,6 +489,8 @@
             T.pendingArrows = [];
             T.arrows = [];
         }
+        if (window.TitanStealth) window.TitanStealth.stopMoveDelay();
+        if (D.clearStealthPill) D.clearStealthPill();
         T.analyzing = true;
         T.analyzingFen = fen;
         T.pvResults = {};   // fresh buffer for this analysis
@@ -595,11 +597,37 @@
         // lines, but the board overlay stays clean.
         if (!T.engineOn) return;
 
-        // Humanize Stealth move selection
+        // Humanize Stealth move selection & Live Countdown
         let effectiveMove = move;
-        if (final !== false && T.stealthOn && window.TitanStealth && T.topMoves && T.topMoves.length > 1) {
-            const stealthMove = window.TitanStealth.selectHumanizedMove(T.topMoves, T.currentElo);
-            if (stealthMove) effectiveMove = stealthMove;
+        if (final !== false && T.stealthOn && window.TitanStealth) {
+            if (T.topMoves && T.topMoves.length > 1) {
+                const stealthMove = window.TitanStealth.selectHumanizedMove(T.topMoves, T.currentElo);
+                if (stealthMove) effectiveMove = stealthMove;
+            }
+
+            const context = {
+                isBook: T.evalDepth === 'Book',
+                evalCp: T.evalCp,
+                isCheck: !!T.evalMate
+            };
+            window.TitanStealth.startMoveDelay(
+                context,
+                (rem, tot, pct) => {
+                    if (D.renderStealthPill) D.renderStealthPill(rem, tot, pct, false);
+                    if (window.TitanWidget && window.TitanWidget.updateStealthTimer) {
+                        window.TitanWidget.updateStealthTimer(rem, tot, pct, false);
+                    }
+                },
+                () => {
+                    if (D.renderStealthPill) D.renderStealthPill(0, 0, 100, true);
+                    if (window.TitanWidget && window.TitanWidget.updateStealthTimer) {
+                        window.TitanWidget.updateStealthTimer(0, 0, 100, true);
+                    }
+                    if (T.hapticFeedbackOn) {
+                        try { if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(35); } catch (e) {}
+                    }
+                }
+            );
         }
 
         // AI Voice Coach commentary & explanation
@@ -667,6 +695,8 @@
             T.pendingArrows = [];
             T.arrows = [];
         }
+        if (window.TitanStealth) window.TitanStealth.stopMoveDelay();
+        if (D.clearStealthPill) D.clearStealthPill();
         T.analyzing = true;
         T.analyzingFen = fen;
         T.analysisStage = 2;    // single pass → bestmove handler finalizes
