@@ -456,7 +456,10 @@
                     Eng.applyCombatConfig();
                     showStatusNotification('COMBAT MODE: ON');
                 } else if (mode === 'threat') {
-                    showStatusNotification('THREAT MODE');
+                    T.threatRadarOn = true;
+                    const threatTool = widget.querySelector('.tool-icon[data-tool="threat"]');
+                    if (threatTool) threatTool.classList.add('active');
+                    showStatusNotification('THREAT MODE: RADAR ON');
                 } else {
                     Eng.setElo(T.currentElo);
                     showStatusNotification('ACCOUNT MODE');
