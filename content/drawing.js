@@ -344,10 +344,43 @@
     function drawMovePct() {
         const overlay = ensureMovePctOverlay();
         if (!overlay) return;
-        overlay.innerHTML = '';
-        if (!T.movePctOn || !T.topMoves || !T.topMoves.length) return;
+        if (!T.movePctOn || !T.topMoves || !T.topMoves.length) {
+            overlay.innerHTML = '';
+            return;
+        }
 
         const orientation = B.getBoardRect() ? B.getBoardRect().orientation : 'white';
+        const existingBadges = overlay.children;
+
+        // In-place DOM recycling if badge count matches topMoves:
+        // updates position, text, and styles smoothly with zero DOM thrashing / zero flicker
+        if (existingBadges && existingBadges.length === T.topMoves.length) {
+            let matched = true;
+            for (let idx = 0; idx < T.topMoves.length; idx++) {
+                const m = T.topMoves[idx];
+                const badge = existingBadges[idx];
+                const square = m.to || m.from;
+                if (!square || !badge) { matched = false; break; }
+                const tf = sqToTransform(square, orientation);
+                if (!tf) { matched = false; break; }
+
+                const c = winPctColor(m.winPct);
+                badge.style.transform = `translate(${tf.xPct}%,${tf.yPct}%)`;
+                const inner = badge.firstElementChild;
+                if (inner) {
+                    inner.style.background = c.bg;
+                    inner.style.border = `2px solid ${c.border}`;
+                    const num = inner.querySelector('.titan-pct-num');
+                    if (num) {
+                        num.textContent = m.winPct + '%';
+                        num.style.color = c.text;
+                    }
+                }
+            }
+            if (matched) return;
+        }
+
+        overlay.innerHTML = '';
 
         T.topMoves.forEach((m, idx) => {
             const square = m.to || m.from;
@@ -373,6 +406,7 @@
                 `background:${c.bg};border:2px solid ${c.border};` +
                 `box-shadow:0 2px 8px rgba(0,0,0,0.45);`;
             const num = document.createElement('span');
+            num.className = 'titan-pct-num';
             num.textContent = m.winPct + '%';
             num.style.cssText = `font-size:13px;font-weight:800;color:${c.text};line-height:1;` +
                 `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;` +
@@ -382,6 +416,7 @@
             if (idx === 0) {
                 // best move gets a small star above the number
                 const star = document.createElement('span');
+                star.className = 'titan-pct-star';
                 star.textContent = '★';
                 star.style.cssText = `font-size:9px;line-height:1;color:#ffd54a;` +
                     `text-shadow:0 1px 2px rgba(0,0,0,0.8);`;

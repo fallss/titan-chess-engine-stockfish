@@ -68,6 +68,21 @@
     const ELO_LEVELS = [1000, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2200, 2500, 2800, 3000];
     const ELO_LABELS = ['BRONZE', 'BRONZE+', 'SILVER', 'SILVER+', 'SILVER++', 'GOLD', 'GOLD+', 'GOLD++', 'EXPERT', 'MASTER', 'IM', 'GM', 'SUPER GM', 'STOCKFISH'];
 
+    // streaming render throttle (ms) — keeps mobile / Xiaomi rendering at smooth 60fps without CPU spike
+    let lastStreamingRender = 0;
+    const STREAMING_THROTTLE_MS = 120;
+
+    function isPlayerTurn() {
+        if (!T.currentFen) return true;
+        const turn = T.currentFen.split(' ')[1] || 'w';
+        const myColor = T.myTurnColor || (window.TitanBoard ? window.TitanBoard.getPlayerColor() : null);
+        if (!myColor) return true;
+        const ctx = window.TitanContext ? window.TitanContext.getContext() : null;
+        const isGameOver = typeof document !== 'undefined' && document.querySelector && !!document.querySelector('.game-over-modal, .game-over-dialog, [class*="game-over"], .board-dialog-component');
+        const isAnalysisLike = (ctx === 'analysis' || ctx === 'review' || ctx === 'puzzle' || ctx === 'practice' || isGameOver);
+        return isAnalysisLike || (turn === myColor);
+    }
+
     // normal mode config — tweak these if you want different
     // playing strength at each level. errorRate is the probability
     // that the engine "misses" a move (0.25 = 25% chance to skip).
@@ -215,13 +230,14 @@
                     const line = e.data;
                     if (typeof line !== 'string') return;
 
-                    // ===== MULTI-PV BUFFERING =====
+                    // ===== MULTI-PV BUFFERING & PROGRESSIVE STREAMING =====
                     // when enabled, stockfish sends multiple info lines per depth:
                     //   info depth 10 ... multipv 1 score cp 34 pv e2e4 e7e5 ...
                     //   info depth 10 ... multipv 2 score cp 10 pv d2d4 d7d5 ...
                     //   info depth 10 ... multipv 3 score cp -5 pv g1f3 g8f6 ...
-                    // we buffer these into T.pvResults keyed by "D_M" (depth-multipv),
-                    // then finalize them on bestmove into T.topMoves.
+                    // we buffer these into T.pvResults keyed by "D_M" (depth-multipv).
+                    // In addition, progressive streaming renders early win% badges
+                    // as soon as depth >= 6 without waiting for bestmove!
                     if (line.startsWith('info ') && T.pvResults) {
                         const mpMatch = line.match(/multipv (\d+)/);
                         const dpMatch = line.match(/ depth (\d+)/);
@@ -229,14 +245,26 @@
                         const cpMatch2 = line.match(/score cp (-?\d+)/);
                         const mateMatch2 = line.match(/score mate (-?\d+)/);
                         if (mpMatch && dpMatch && pvMatch) {
-                            const key = `${dpMatch[1]}_${mpMatch[1]}`;
+                            const dp = parseInt(dpMatch[1], 10);
+                            const mp = parseInt(mpMatch[1], 10);
+                            const key = `${dp}_${mp}`;
                             T.pvResults[key] = {
-                                mp: parseInt(mpMatch[1], 10),
-                                dp: parseInt(dpMatch[1], 10),
+                                mp,
+                                dp,
                                 pv: pvMatch[1], // first move in the PV
                                 cp: cpMatch2 ? parseInt(cpMatch2[1], 10) : null,
                                 mate: mateMatch2 ? parseInt(mateMatch2[1], 10) : null
                             };
+
+                            // Progressive live badge streaming:
+                            if (T.engineOn && T.movePctOn && dp >= 6 && isPlayerTurn()) {
+                                const now = Date.now();
+                                if (now - lastStreamingRender >= STREAMING_THROTTLE_MS) {
+                                    lastStreamingRender = now;
+                                    finalizeTopMoves();
+                                    if (D.drawMovePct) D.drawMovePct();
+                                }
+                            }
                         }
                     }
 
@@ -289,10 +317,9 @@
                         clearAnalyzeWatchdog();
                         const match = line.match(/bestmove ([a-h][1-8][a-h][1-8])/);
                         if (T.analysisStage === 1) {
-                            // STAGE 1 (fast, MultiPV=1): show the provisional
-                            // arrow immediately, then deepen with a warm TT.
-                            // provisional ≠ final: badges and queue entries
-                            // only come from the final stage.
+                            // STAGE 1 (fast shallow pass, MultiPV=3/1):
+                            // finalize provisional topMoves so percentage badges show immediately
+                            finalizeTopMoves();
                             if (match) showMove(match[1], false);
                             startStage2();
                         } else {
@@ -436,20 +463,18 @@
         // don't send 'ucinewgame' here — it resets the hash table
         // and kills all cached positions. only sent on actual new games.
 
-        const stage1Depth = cfg.depth - 6;
-        if (stage1Depth >= 8) {
-            // deep config → two-stage. stage 1: fast provisional arrow.
+        const stage1Depth = Math.min(8, cfg.depth - 4);
+        if (cfg.depth >= 12 && stage1Depth >= 6) {
+            // deep config → two-stage. stage 1: fast provisional arrow + move% badges (<250ms).
             T.analysisStage = 1;
-            T.stockfishWorker.postMessage('setoption name MultiPV value 1');
+            T.stockfishWorker.postMessage(`setoption name MultiPV value ${T.movePctOn ? 3 : 1}`);
             T.stockfishWorker.postMessage(`position fen ${fen}`);
-            const stage1Cmd = cfg.movetime
-                ? `go depth ${stage1Depth} movetime ${Math.min(1200, cfg.movetime)}`
-                : `go depth ${stage1Depth}`;
+            const stage1Cmd = `go depth ${stage1Depth} movetime 350`;
             T.stockfishWorker.postMessage(stage1Cmd);
         } else {
             // shallow config → single pass, final semantics right away
             T.analysisStage = 2;
-            T.stockfishWorker.postMessage(`setoption name MultiPV value ${T.engineOn ? 3 : 1}`);
+            T.stockfishWorker.postMessage(`setoption name MultiPV value ${T.movePctOn ? 3 : 1}`);
             T.stockfishWorker.postMessage(`position fen ${fen}`);
             // use movetime as a cap if configured — stockfish searches
             // up to the depth limit but stops early if time runs out.
@@ -474,11 +499,12 @@
         }
         T.analysisStage = 2;
         T.analyzing = true;
+        // Keep existing T.topMoves active while Stage 2 deepens so badges don't flicker!
         T.pvResults = {};
         startAnalyzeWatchdog();
         const cfg = pickConfig();
-        // MultiPV 3 only when badges are actually visible (arrows on)
-        T.stockfishWorker.postMessage(`setoption name MultiPV value ${T.engineOn ? 3 : 1}`);
+        // MultiPV 3 when movePct is on, so deep pass continues refining top 3 lines
+        T.stockfishWorker.postMessage(`setoption name MultiPV value ${T.movePctOn ? 3 : 1}`);
         T.stockfishWorker.postMessage(`position fen ${fen}`);
         const goCmd = cfg.movetime
             ? `go depth ${cfg.depth} movetime ${cfg.movetime}`
@@ -572,8 +598,8 @@
         T.topMoves = [];
         startAnalyzeWatchdog();
         const cfg = pickConfig();
-        // explicit MultiPV: 3 only when badges are used (arrows on)
-        T.stockfishWorker.postMessage(`setoption name MultiPV value ${T.engineOn ? 3 : 1}`);
+        // explicit MultiPV: 3 only when badges are used (movePctOn)
+        T.stockfishWorker.postMessage(`setoption name MultiPV value ${T.movePctOn ? 3 : 1}`);
         T.stockfishWorker.postMessage(`position fen ${fen}`);
         // pre-analyze at reduced depth, capped at 3 seconds
         const preDepth = Math.max(6, cfg.depth - 4);
@@ -585,20 +611,39 @@
     // ============================================================
     //
     // ini adalah fungsi internal yang dipanggil setelah stockfish
-    // melaporkan 'bestmove'. ia mengambil semua pvResults yang
-    // dikumpulkan selama pencarian, memfilter ke depth paling tinggi,
+    // melaporkan 'bestmove' atau selama streaming live depth.
+    // ia mengambil semua pvResults yang dikumpulkan selama pencarian,
+    // memfilter ke depth paling stabil dengan multi-PV lengkap,
     // menghitung win% untuk setiap langkah (dari perspektif pemain),
     // dan menyimpan ke T.topMoves agar bisa dirender oleh drawing.js.
     function finalizeTopMoves() {
         if (!T.pvResults || !Object.keys(T.pvResults).length) {
-            T.topMoves = [];
             return;
         }
-        // ambil semua entry dengan depth tertinggi (yang terakhir dicari)
         const entries = Object.values(T.pvResults);
-        const maxDepth = Math.max(...entries.map(e => e.dp));
-        const best = entries.filter(e => e.dp === maxDepth).sort((a,b) => a.mp - b.mp);
-        if (!best.length) { T.topMoves = []; return; }
+        if (!entries.length) return;
+
+        // Group by depth to find highest depth with evaluated multi-PV lines
+        const depthMap = new Map();
+        for (const e of entries) {
+            if (!depthMap.has(e.dp)) depthMap.set(e.dp, []);
+            depthMap.get(e.dp).push(e);
+        }
+
+        const sortedDepths = Array.from(depthMap.keys()).sort((a, b) => b - a);
+        let best = null;
+        for (const d of sortedDepths) {
+            const list = depthMap.get(d);
+            // prefer a depth with >= 2 lines (complete multipv) or the only available depth
+            if (list.length >= 2 || sortedDepths.length === 1 || d === sortedDepths[sortedDepths.length - 1]) {
+                best = list.sort((a, b) => a.mp - b.mp);
+                break;
+            }
+        }
+        if (!best || !best.length) {
+            best = depthMap.get(sortedDepths[0]).sort((a, b) => a.mp - b.mp);
+        }
+        if (!best || !best.length) return;
 
         // sisi yang giliran jalan — default 'w' jika FEN kosong
         const sideToMove = T.currentFen ? T.currentFen.split(' ')[1] : 'w';
@@ -606,8 +651,8 @@
         // hitung win% untuk setiap langkah (untuk sisi yang akan bergerak)
         T.topMoves = best.map(entry => {
             const mv = entry.pv;         // format "e2e4"
-            const fromSq = mv.slice(0,2);
-            const toSq = mv.slice(2,4);
+            const fromSq = mv.slice(0, 2);
+            const toSq = mv.slice(2, 4);
 
             let winPct = 50;             // default: netral
             if (entry.mate !== null) {
