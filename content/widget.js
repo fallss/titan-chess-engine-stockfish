@@ -454,15 +454,16 @@
                 T.combatMode = (mode === 'combat');
                 if (T.combatMode) {
                     Eng.applyCombatConfig();
-                    showStatusNotification('COMBAT MODE: ON');
+                    showStatusNotification('COMBAT MODE: TACTICAL MAX ON');
                 } else if (mode === 'threat') {
+                    if (Eng.applyThreatConfig) Eng.applyThreatConfig();
                     T.threatRadarOn = true;
                     const threatTool = widget.querySelector('.tool-icon[data-tool="threat"]');
                     if (threatTool) threatTool.classList.add('active');
-                    showStatusNotification('THREAT MODE: RADAR ON');
+                    showStatusNotification('THREAT MODE: PROPHYLACTIC DEFENSE ON');
                 } else {
                     Eng.setElo(T.currentElo);
-                    showStatusNotification('ACCOUNT MODE');
+                    showStatusNotification('ACCOUNT MODE: ELO CALIBRATED');
                 }
                 D.clearArrows();
                 T.currentFen = '';
@@ -851,7 +852,11 @@
                 widget.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
                 const modeBtn = widget.querySelector(`.mode-btn.${result.engineMode}`);
                 if (modeBtn) modeBtn.classList.add('active');
-                if (T.combatMode && T.engineReady) Eng.applyCombatConfig();
+                if (T.engineReady) {
+                    if (T.combatMode) Eng.applyCombatConfig();
+                    else if (result.engineMode === 'threat' && Eng.applyThreatConfig) Eng.applyThreatConfig();
+                    else Eng.setElo(T.currentElo);
+                }
             }
 
             // restore queue mode
@@ -978,14 +983,13 @@
         // "winning chances" in [-1, 1] — lichess logistic curve
         const winningChances = 2 / (1 + Math.exp(-0.00368208 * cp)) - 1;
         // draw rate: peaks (~30%) at equality, decays with |cp|
-        const draw = 0.30 * Math.exp(-Math.pow(cp / 300, 2));
-        const white = (0.5 + 0.5 * winningChances) * (1 - draw);
-        const black = (0.5 - 0.5 * winningChances) * (1 - draw);
-        return {
-            white: Math.round(white * 100),
-            draw: Math.round(draw * 100),
-            black: Math.round(black * 100)
-        };
+        const drawRate = 0.30 * Math.exp(-Math.pow(cp / 300, 2));
+        const whiteRaw = (0.5 + 0.5 * winningChances) * (1 - drawRate);
+        const blackRaw = (0.5 - 0.5 * winningChances) * (1 - drawRate);
+        const white = Math.round(whiteRaw * 100);
+        const draw = Math.round(drawRate * 100);
+        const black = Math.max(0, 100 - white - draw);
+        return { white, draw, black };
     }
 
     // render the live evaluation into the EVAL tab and the persistent
@@ -1008,7 +1012,7 @@
             // forced mate: near-certain win for the mating side
             const whiteMate = T.evalMate > 0;
             wdl = whiteMate ? { white: 99, draw: 1, black: 0 } : { white: 0, draw: 1, black: 99 };
-            scoreText = (T.evalMate > 0 ? 'M' + T.evalMate : 'M' + T.evalMate);
+            scoreText = (T.evalMate > 0 ? 'M' + T.evalMate : '-M' + Math.abs(T.evalMate));
             barPct = whiteMate ? 99 : 1;
         } else {
             wdl = wdlFromCentiPawns(T.evalCp);

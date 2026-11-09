@@ -154,6 +154,114 @@
         };
     }
 
+    // Simulate move on a 64-element board array
+    function simulateMove(board, moveStr) {
+        if (!board || !moveStr || moveStr.length < 4) return null;
+        const fromSq = strToSq(moveStr.slice(0, 2));
+        const toSq = strToSq(moveStr.slice(2, 4));
+        if (fromSq < 0 || toSq < 0 || !board[fromSq]) return null;
+
+        const next = board.slice();
+        let piece = next[fromSq];
+        if (moveStr.length >= 5) {
+            const promo = moveStr[4];
+            piece = (piece === piece.toUpperCase()) ? promo.toUpperCase() : promo.toLowerCase();
+        }
+        next[toSq] = piece;
+        next[fromSq] = null;
+
+        // En-passant pawn capture handling
+        if (piece.toLowerCase() === 'p' && (fromSq % 8 !== toSq % 8) && !board[toSq]) {
+            const isWhite = (piece === piece.toUpperCase());
+            const epSq = isWhite ? toSq + 8 : toSq - 8;
+            if (epSq >= 0 && epSq < 64) next[epSq] = null;
+        }
+
+        return next;
+    }
+
+    // Evaluate tactical safety of a candidate move
+    // Returns: { delta: number, isBlunder: boolean, isDefensive: boolean, reason: string }
+    function evaluateMoveSafety(fen, moveStr, playerColor) {
+        if (!fen || !moveStr || moveStr.length < 4) {
+            return { delta: 0, isBlunder: false, isDefensive: false, reason: 'none' };
+        }
+        const board = getBoardArray(fen);
+        if (!board) return { delta: 0, isBlunder: false, isDefensive: false, reason: 'none' };
+
+        const myCol = playerColor || 'w';
+        const oppCol = myCol === 'w' ? 'b' : 'w';
+
+        const before = analyzeThreats(fen, myCol);
+        const hangingBefore = new Set(before.hanging.map(h => h.square));
+
+        const nextBoard = simulateMove(board, moveStr);
+        if (!nextBoard) return { delta: 0, isBlunder: false, isDefensive: false, reason: 'none' };
+
+        const oppAttacksAfter = getAttackedSquares(nextBoard, oppCol);
+        const myAttacksAfter = getAttackedSquares(nextBoard, myCol);
+
+        const fromStr = moveStr.slice(0, 2);
+        const toStr = moveStr.slice(2, 4);
+        const toSq = strToSq(toStr);
+        const movedPiece = nextBoard[toSq];
+        const pieceType = movedPiece ? movedPiece.toLowerCase() : 'p';
+
+        let delta = 0;
+        let isBlunder = false;
+        let isDefensive = false;
+        let reason = 'neutral';
+
+        // 1. Direct blunder: moved piece lands on enemy-controlled square without friendly guard
+        if (oppAttacksAfter.has(toSq) && !myAttacksAfter.has(toSq)) {
+            isBlunder = true;
+            if (pieceType === 'q') delta -= 40;
+            else if (pieceType === 'r') delta -= 30;
+            else if (pieceType === 'b' || pieceType === 'n') delta -= 22;
+            else delta -= 14;
+            reason = `hanging_${pieceType}`;
+        }
+
+        // 2. Defensive rescue: moved piece was hanging before and is now safe or defended
+        if (hangingBefore.has(fromStr) && (!oppAttacksAfter.has(toSq) || myAttacksAfter.has(toSq))) {
+            isDefensive = true;
+            delta += (pieceType === 'q' || pieceType === 'r') ? 14 : 9;
+            reason = `saved_${pieceType}`;
+        }
+
+        // 3. Resolving check: position was under check and this move safely parries it
+        if (before.check) {
+            isDefensive = true;
+            delta += 8;
+            reason = 'escaped_check';
+        }
+
+        // 4. Checking if any other friendly pieces are left hanging after this move
+        let hangingAfterCount = 0;
+        for (let sq = 0; sq < 64; sq++) {
+            const p = nextBoard[sq];
+            if (!p) continue;
+            const pCol = (p === p.toUpperCase()) ? 'w' : 'b';
+            if (pCol === myCol && sq !== toSq) {
+                if (oppAttacksAfter.has(sq) && !myAttacksAfter.has(sq)) {
+                    hangingAfterCount++;
+                }
+            }
+        }
+
+        if (hangingAfterCount > before.hanging.length) {
+            isBlunder = true;
+            delta -= 20;
+            reason = 'exposed_teammate';
+        } else if (hangingAfterCount < before.hanging.length && !isDefensive) {
+            isDefensive = true;
+            delta += 7;
+            reason = 'defended_teammate';
+        }
+
+        return { delta, isBlunder, isDefensive, reason };
+    }
+
     // Attach Drag-to-Blunder Interceptor
     let dragListenerAttached = false;
     function initBlunderInterceptor() {
@@ -185,6 +293,8 @@
     // Public API
     window.TitanThreat = {
         analyzeThreats,
+        simulateMove,
+        evaluateMoveSafety,
         initBlunderInterceptor
     };
 })();

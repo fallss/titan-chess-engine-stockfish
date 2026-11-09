@@ -132,6 +132,26 @@
         '3000': { skillLevel: 20, depth: 25, uciElo: 3200, errorRate: 0.0, movetime: 5000, unlimited: true }
     };
 
+    // threat mode — focused on defensive prophylaxis, solid tactical awareness,
+    // and anti-blunder stability. Moderate-high depth with negative contempt
+    // to strictly penalize risk and value king safety.
+    const THREAT_CONFIG = {
+        '1000': { skillLevel: 8,  depth: 12, uciElo: 1300, errorRate: 0.08, contempt: -20 },
+        '1200': { skillLevel: 10, depth: 14, uciElo: 1450, errorRate: 0.06, contempt: -20 },
+        '1300': { skillLevel: 12, depth: 15, uciElo: 1550, errorRate: 0.05, contempt: -20 },
+        '1400': { skillLevel: 14, depth: 16, uciElo: 1650, errorRate: 0.04, contempt: -20 },
+        '1500': { skillLevel: 16, depth: 17, uciElo: 1750, errorRate: 0.03, contempt: -20 },
+        '1600': { skillLevel: 18, depth: 18, uciElo: 1850, errorRate: 0.02, contempt: -20 },
+        '1700': { skillLevel: 19, depth: 20, uciElo: 1950, errorRate: 0.01, contempt: -20 },
+        '1800': { skillLevel: 20, depth: 21, uciElo: 2100, errorRate: 0.01, contempt: -20 },
+        '1900': { skillLevel: 20, depth: 22, uciElo: 2200, errorRate: 0.005, contempt: -20 },
+        '2000': { skillLevel: 20, depth: 24, uciElo: 2400, errorRate: 0.0,   contempt: -25 },
+        '2200': { skillLevel: 20, depth: 26, uciElo: 2600, errorRate: 0.0,   contempt: -25 },
+        '2500': { skillLevel: 20, depth: 28, uciElo: 2800, errorRate: 0.0,   movetime: 6000, contempt: -30 },
+        '2800': { skillLevel: 20, depth: 28, uciElo: 3000, errorRate: 0.0,   movetime: 8000, contempt: -30 },
+        '3000': { skillLevel: 20, depth: 30, uciElo: 3200, errorRate: 0.0,   movetime: 8000, contempt: -30, unlimited: true }
+    };
+
     // stuck analysis timeout — if analyzing stays true for >10s,
     // something went wrong (worker crash, no bestmove response).
     // we force-reset it so future analysis isn't permanently blocked.
@@ -278,11 +298,16 @@
                         const mateMatch = line.match(/score mate (-?\d+)/);
                         const depthMatch = line.match(/ depth (\d+)/);
                         if (depthMatch) T.evalDepth = parseInt(depthMatch[1], 10);
+
+                        // Normalize score to White perspective (UCI emits scores relative to sideToMove)
+                        const sideToMove = (T.analyzingFen || T.currentFen || '').split(' ')[1] || 'w';
+                        const sign = (sideToMove === 'b') ? -1 : 1;
+
                         if (mateMatch) {
-                            T.evalMate = parseInt(mateMatch[1], 10);
+                            T.evalMate = parseInt(mateMatch[1], 10) * sign;
                             T.evalCp = null;
                         } else if (cpMatch) {
-                            T.evalCp = parseInt(cpMatch[1], 10);
+                            T.evalCp = parseInt(cpMatch[1], 10) * sign;
                             T.evalMate = null;
                         }
                         if (window.TitanWidget) window.TitanWidget.updateEvalDisplay();
@@ -397,29 +422,32 @@
     //   hash bumped to 32MB, Contempt 50 (anti-draw).
     function setElo(elo) {
         T.currentElo = elo;
-        const configTable = T.combatMode ? COMBAT_CONFIG : ELO_CONFIG;
+        const configTable = (T.currentMode === 'threat') ? THREAT_CONFIG : (T.combatMode ? COMBAT_CONFIG : ELO_CONFIG);
         const cfg = configTable[elo] || configTable['1000'];
         // strength changed → cached results no longer match the config
         clearCache();
         if (T.engineReady && T.stockfishWorker) {
             if (cfg.unlimited) {
                 // mode 3000: disable strength limiter for full stockfish power.
-                // UCI_LimitStrength false = no artificial cap on engine strength.
-                // Contempt 50 = engine avoids draws aggressively.
-                // NOTE: Hash is NOT touched here — re-setting it would flush
-                // the transposition table (see uciok handler).
                 T.stockfishWorker.postMessage('setoption name UCI_LimitStrength value false');
-                T.stockfishWorker.postMessage('setoption name Contempt value 50');
+                const contemptVal = (T.currentMode === 'threat') ? (cfg.contempt || -20) : (T.combatMode ? 50 : 0);
+                T.stockfishWorker.postMessage(`setoption name Contempt value ${contemptVal}`);
             } else {
                 T.stockfishWorker.postMessage('setoption name UCI_LimitStrength value true');
                 T.stockfishWorker.postMessage(`setoption name UCI_Elo value ${cfg.uciElo}`);
             }
             T.stockfishWorker.postMessage(`setoption name Skill Level value ${cfg.skillLevel}`);
+            if (cfg.contempt !== undefined) {
+                T.stockfishWorker.postMessage(`setoption name Contempt value ${cfg.contempt}`);
+            }
         }
     }
 
-    // pick the active config table entry (combat or elo mode)
+    // pick the active config table entry (threat, combat, or account/elo mode)
     function pickConfig() {
+        if (T.currentMode === 'threat') {
+            return THREAT_CONFIG[T.currentElo] || THREAT_CONFIG['1000'];
+        }
         const configTable = T.combatMode ? COMBAT_CONFIG : ELO_CONFIG;
         return configTable[T.currentElo] || configTable['1000'];
     }
@@ -675,6 +703,22 @@
         }
     }
 
+    // switch to threat-level defensive prophylactic config
+    function applyThreatConfig() {
+        clearCache();
+        const cfg = THREAT_CONFIG[T.currentElo] || THREAT_CONFIG['1000'];
+        if (T.engineReady && T.stockfishWorker) {
+            if (cfg.unlimited) {
+                T.stockfishWorker.postMessage('setoption name UCI_LimitStrength value false');
+            } else {
+                T.stockfishWorker.postMessage('setoption name UCI_LimitStrength value true');
+                T.stockfishWorker.postMessage(`setoption name UCI_Elo value ${cfg.uciElo}`);
+            }
+            T.stockfishWorker.postMessage(`setoption name Skill Level value ${cfg.skillLevel}`);
+            T.stockfishWorker.postMessage(`setoption name Contempt value ${cfg.contempt || -20}`);
+        }
+    }
+
     // queue mode: analyze during opponent's turn at reduced depth.
     // this gives us a head start so the arrow appears faster
     // when it becomes our turn. single pass, final semantics.
@@ -752,29 +796,92 @@
         if (!best || !best.length) return;
 
         // sisi yang giliran jalan — default 'w' jika FEN kosong
-        const sideToMove = T.currentFen ? T.currentFen.split(' ')[1] : 'w';
+        const fen = T.analyzingFen || T.currentFen || '';
+        const sideToMove = fen ? fen.split(' ')[1] : 'w';
+        const mode = T.currentMode || (T.combatMode ? 'combat' : 'account');
+        const elo = parseInt(T.currentElo || '1500', 10);
 
         // hitung win% untuk setiap langkah (untuk sisi yang akan bergerak)
-        T.topMoves = best.map(entry => {
+        const mappedMoves = best.map(entry => {
             const mv = entry.pv;         // format "e2e4"
             const fromSq = mv.slice(0, 2);
             const toSq = mv.slice(2, 4);
 
             let winPct = 50;             // default: netral
+            let isBlunder = false;
+            let isDefensive = false;
+            let isMate = false;
+
             if (entry.mate !== null) {
-                // skakmat: + = putih mendarat, - = hitam mendarat
-                winPct = (sideToMove === 'w') ? (entry.mate > 0 ? 100 : 0) : (entry.mate < 0 ? 100 : 0);
+                // In UCI, entry.mate is from sideToMove perspective
+                isMate = true;
+                if (entry.mate > 0) {
+                    winPct = 99;
+                } else {
+                    winPct = 1;
+                    isBlunder = true;
+                }
             } else if (entry.cp !== null) {
-                // cp -> wdl -> win% untuk sisi yang sedang berjalan
-                const winningChances = 2 / (1 + Math.exp(-0.00368208 * entry.cp)) - 1;
-                const draw = 0.30 * Math.exp(-Math.pow(entry.cp / 300, 2));
-                const white = (0.5 + 0.5 * winningChances) * (1 - draw);
-                const black = (0.5 - 0.5 * winningChances) * (1 - draw);
-                winPct = Math.round(sideToMove === 'w' ? white * 100 : black * 100);
+                const cp = entry.cp; // centipawns from sideToMove perspective
+
+                if (mode === 'combat') {
+                    // COMBAT MODE: Sharp tactical model with high winning conversion sensitivity
+                    const k = 0.0044;
+                    const winningChances = 2 / (1 + Math.exp(-k * cp)) - 1;
+                    const draw = 0.22 * Math.exp(-Math.pow(cp / 280, 2));
+                    const winRate = (0.5 + 0.5 * winningChances) * (1 - draw);
+                    winPct = Math.round((winRate + 0.5 * draw) * 100);
+                    winPct = Math.max(2, Math.min(98, winPct));
+                    if (cp <= -250) isBlunder = true;
+                } else if (mode === 'threat') {
+                    // THREAT MODE: Prophylactic Safety & Anti-Blunder Composite Rating
+                    const k = 0.0035;
+                    const winningChances = 2 / (1 + Math.exp(-k * cp)) - 1;
+                    const draw = 0.28 * Math.exp(-Math.pow(cp / 300, 2));
+                    let basePct = Math.round(((0.5 + 0.5 * winningChances) * (1 - draw) + 0.5 * draw) * 100);
+
+                    let safetyDelta = 0;
+                    if (window.TitanThreat && window.TitanThreat.evaluateMoveSafety) {
+                        const safety = window.TitanThreat.evaluateMoveSafety(fen, mv, sideToMove);
+                        safetyDelta = safety.delta;
+                        isBlunder = safety.isBlunder;
+                        isDefensive = safety.isDefensive;
+                    }
+
+                    winPct = Math.max(5, Math.min(97, basePct + safetyDelta));
+                } else {
+                    // ACCOUNT MODE (Default): ELO-calibrated humanized conversion probability
+                    const eloNorm = Math.max(0, Math.min(1, (elo - 1000) / 2000));
+                    const k = 0.0022 + eloNorm * (0.00368208 - 0.0022);
+                    const winningChances = 2 / (1 + Math.exp(-k * cp)) - 1;
+                    const draw = (0.35 - eloNorm * 0.10) * Math.exp(-Math.pow(cp / 300, 2));
+                    const winRate = (0.5 + 0.5 * winningChances) * (1 - draw);
+                    winPct = Math.round((winRate + 0.5 * draw) * 100);
+                    winPct = Math.max(5, Math.min(95, winPct));
+                    if (cp <= -200) isBlunder = true;
+                }
             }
 
-            return { from: fromSq, to: toSq, winPct };
+            return {
+                from: fromSq,
+                to: toSq,
+                move: mv,
+                winPct,
+                isBlunder,
+                isDefensive,
+                isMate,
+                cp: entry.cp,
+                mate: entry.mate
+            };
         });
+
+        // In THREAT mode: sort moves by safety-adjusted winPct descending
+        // so the most solid, blunder-free move ranks #1
+        if (mode === 'threat') {
+            mappedMoves.sort((a, b) => b.winPct - a.winPct);
+        }
+
+        T.topMoves = mappedMoves;
     }
 
     // hard-stop the engine: abort the current search and mark it
@@ -850,7 +957,7 @@
     }
 
     window.TitanEngine = {
-        ELO_LEVELS, ELO_LABELS, ELO_CONFIG, COMBAT_CONFIG,
-        initEngine, setElo, analyze, showMove, applyCombatConfig, preAnalyze, stopAnalysis, clearCache
+        ELO_LEVELS, ELO_LABELS, ELO_CONFIG, COMBAT_CONFIG, THREAT_CONFIG,
+        initEngine, setElo, analyze, showMove, applyCombatConfig, applyThreatConfig, preAnalyze, stopAnalysis, clearCache
     };
 })();

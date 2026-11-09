@@ -128,39 +128,47 @@ flowchart TD
 
 ## 🎮 Engine Profile Modes (THREAT · ACCOUNT · COMBAT)
 
-Titan Chess Engine menyediakan 3 mode profil permainan yang dapat diakses langsung dari dashboard utama untuk menyesuaikan gaya bermain dan situasi pertandingan:
+Titan Chess Engine menyediakan 3 mode profil permainan yang dapat diakses langsung dari dashboard utama dengan kalkulasi **persentase langkah (Win-Draw-Loss / WDL)** matematis yang disesuaikan untuk setiap gaya bermain:
 
-| Mode | Karakter | Fokus Utama |
-| :--- | :--- | :--- |
-| **THREAT** | 🛡️ Defensif | Memindai ancaman lawan, menjaga bidak hanging, anti-jebakan. |
-| **ACCOUNT** | 👤 Manusiawi | Mengikuti slider ELO yang Anda tentukan, aman untuk akun. |
-| **COMBAT** | ⚔️ Agresif | Pencarian lebih dalam, taktik mematikan, performa maksimal. |
+| Mode | Karakter | Algoritma Win% Langkah | Fokus Utama & Profil Engine |
+| :--- | :--- | :--- | :--- |
+| **THREAT** | 🛡️ Defensif | **Composite Safety & Prophylaxis** (`🛡️` safe / `⚠️` blunder) | `THREAT_CONFIG` (`Contempt = -20`), pemindaian petak serang & anti-jebakan. |
+| **ACCOUNT** | 👤 Manusiawi | **Lichess ELO-Calibrated Curve** ($k \in [0.0022, 0.0037]$) | `ELO_CONFIG` terkalibrasi rating, konversi kemenangan manusiawi, aman akun. |
+| **COMBAT** | ⚔️ Agresif | **Sharp Tactical Decisiveness** ($k = 0.0044$, `★` best) | `COMBAT_CONFIG` (`Contempt = 50`, depth ekstra), taktik mematikan 0% error. |
 
-### 1. 🛡️ THREAT Mode (Pertahanan & Radar Ancaman)
+### 1. 🛡️ THREAT Mode (Pertahanan Proaktif & Radar Ancaman)
 * **Karakter**: Defensif, protektif, dan waspada tinggi.
-* **Fokus Kerja**: 
+* **Fokus Kerja Engine**: 
+  * Mengaktifkan konfigurasi **`THREAT_CONFIG`** dengan *negative contempt* (`Contempt = -20`) untuk memprioritaskan keamanan raja, struktur pion kokoh, dan menghindari pengorbanan berisiko tinggi.
   * Mengaktifkan modul **Blunder Radar & Threat Shield** (`content/threat.js`).
-  * Memindai seluruh petak yang sedang diserang lawan secara *real-time*.
-  * Menyorot **bidak Anda yang tidak terjaga (*hanging pieces*)** dengan lingkaran merah berdenyut (*pulsing red outline*).
-  * Memperingatkan jebakan taktis lawan (garpuan kuda, pin menteri, skakmat terselubung) sebelum Anda melangkah.
-* **Rekomendasi Pemakaian**: Saat Anda sedang dalam posisi tertekan, lawan bermain sangat agresif, atau saat Anda ingin memastikan pertahanan Anda 100% kokoh tanpa blunder.
+  * Memindai seluruh petak serang lawan dan menyorot bidak tidak terjaga (*hanging pieces*) secara *real-time*.
+* **Akurasi Persentase Langkah (Move Win%)**:
+  * Menggunakan kalkulasi **Composite Prophylactic Safety**:
+    * **Pendeteksi Blunder (`⚠️`)**: Jika kandidat langkah mendarat di petak yang dikontrol musuh tanpa perlindungan yang cukup atau membuka serangan ke kawan, diberikan penalti win% drastis ($-15\%$ hingga $-40\%$) dan lencana peringatan merah `⚠️`.
+    * **Bonus Penyelamatan (`🛡️`)**: Jika langkah berhasil melarikan bidak gantung dari ancaman atau menangkis skak, diberikan bonus stabilitas ($+8\%$ hingga $+15\%$) dan lencana perisai `🛡️`.
+  * Langkah pada papan diurutkan berdasarkan skor keamanan tertinggi, membimbing Anda selalu melangkah di jalur teraman.
 
 ### 2. 👤 ACCOUNT Mode (Mode Manusiawi / Aman Akun — *Default*)
-* **Karakter**: Alami, fleksibel, dan adaptif.
-* **Fokus Kerja**:
+* **Karakter**: Alami, terkalibrasi ELO, dan aman dari deteksi.
+* **Fokus Kerja Engine**:
   * Menggunakan tabel konfigurasi **`ELO_CONFIG`** yang dikendalikan oleh slider ELO (1000 hingga 3000).
   * Mengaktifkan pembatasan kekuatan terkalibrasi (`UCI_LimitStrength = true`) dan menyuntikkan *human error rate* alami sesuai peringkat rating.
-  * Menjaga pola langkah agar tampak seperti pemain manusia asli pada level rating tersebut.
-* **Rekomendasi Pemakaian**: Mode harian untuk bermain online (Blitz, Rapid, Bullet) agar performa akun Anda konsisten, alami, dan aman dari kecurigaan sistem Fair Play Chess.com.
+* **Akurasi Persentase Langkah (Move Win%)**:
+  * Menggunakan kurva logistik **Lichess ELO-Calibrated WDL Model**:
+    * Memetakan faktor konversi $k$ secara dinamis dari rating $1000$ ($k=0.0022$) hingga $3000$ ($k=0.00368208$).
+    * Merefleksikan probabilitas konversi kemenangan realistis bagi pemain manusia di level tersebut (keunggulan +1.5 pion di level 1200 tidak dihitung 95% seperti komputer, melainkan ~68% karena manusia rentan membuat kesalahan).
+    * Menjaga CAPS (evaluasi akurasi) tetap manusiawi di kisaran 82%–91%.
 
 ### 3. ⚔️ COMBAT Mode (Mode Tempur Agresif / *Try-Hard Mode*)
 * **Karakter**: Agresif, tajam, dan mematikan.
-* **Fokus Kerja**:
+* **Fokus Kerja Engine**:
   * Mengaktifkan tabel konfigurasi **`COMBAT_CONFIG`**.
   * Meningkatkan kedalaman pencarian engine (*depth*) secara drastis (+4 hingga +8 langkah lebih dalam) di setiap tier rating.
-  * Memaksimalkan *skill level* Stockfish dan memangkas tingkat kesalahan hingga 0%.
-  * Pada level 3000, engine membuka kekuatan penuh (*unrestricted Stockfish*) dengan `Contempt = 50`.
-* **Rekomendasi Pemakaian**: Saat Anda menghadapi lawan berperingkat tinggi, tertinggal materi, atau saat ingin menghabisi lawan dengan kombinasi taktik skakmat tercepat.
+  * Memaksimalkan *skill level* Stockfish, memangkas tingkat kesalahan hingga 0%, dan mengaktifkan `Contempt = 50` untuk menolak remis.
+* **Akurasi Persentase Langkah (Move Win%)**:
+  * Menggunakan formula **Sharp Tactical Decisiveness** ($k = 0.0044$):
+    * Mempertegas selisih kandidat langkah secara ekstrem: langkah taktis terbaik langsung menembus $90\%-98\%$ dengan lencana bintang emas `★`, sementara langkah suboptimal atau blunder langsung jatuh ke zona merah.
+    * Sangat akurat untuk menemukan pukulan taktis tak terduga (*tactical crusher*) dan kombinasi skakmat paksa.
 
 ---
 

@@ -331,13 +331,26 @@
         return movePctOverlay;
     }
 
-    // pick a badge color for a given win% (0-100).
-    function winPctColor(pct) {
-        if (pct >= 62) return { bg: 'rgba(0,255,136,0.22)', border: 'rgba(0,255,136,0.85)', text: '#00ff88' };
-        if (pct >= 53) return { bg: 'rgba(0,242,255,0.18)', border: 'rgba(0,242,255,0.75)', text: '#00f2ff' };
-        if (pct <= 38) return { bg: 'rgba(255,64,64,0.22)', border: 'rgba(255,64,64,0.85)', text: '#ff5252' };
-        if (pct <= 47) return { bg: 'rgba(255,140,0,0.18)', border: 'rgba(255,140,0,0.7)', text: '#ffa940' };
-        return { bg: 'rgba(160,160,160,0.18)', border: 'rgba(200,200,200,0.6)', text: '#d5d5d5' };
+    // pick a badge color for a given win% (0-100), with blunder/defensive enhancements
+    function winPctColor(pct, isBlunder, isDefensive) {
+        if (isBlunder) {
+            return { bg: 'rgba(255,30,30,0.35)', border: '#ff3344', text: '#ff5252', shadow: '0 0 10px rgba(255,51,68,0.6)' };
+        }
+        if (isDefensive) {
+            return { bg: 'rgba(0,242,255,0.28)', border: '#00f2ff', text: '#00f2ff', shadow: '0 0 10px rgba(0,242,255,0.5)' };
+        }
+        if (pct >= 65) return { bg: 'rgba(0,255,136,0.25)', border: '#00ff88', text: '#00ff88', shadow: '0 0 8px rgba(0,255,136,0.4)' };
+        if (pct >= 53) return { bg: 'rgba(0,242,255,0.20)', border: '#00f2ff', text: '#00f2ff', shadow: '0 0 6px rgba(0,242,255,0.3)' };
+        if (pct <= 38) return { bg: 'rgba(255,64,64,0.24)', border: '#ff5252', text: '#ff5252', shadow: '0 0 6px rgba(255,64,64,0.3)' };
+        if (pct <= 47) return { bg: 'rgba(255,140,0,0.20)', border: '#ffa940', text: '#ffa940', shadow: '0 0 6px rgba(255,140,0,0.3)' };
+        return { bg: 'rgba(160,160,160,0.18)', border: 'rgba(200,200,200,0.6)', text: '#d5d5d5', shadow: '0 2px 6px rgba(0,0,0,0.4)' };
+    }
+
+    function getBadgeIcon(m, idx) {
+        if (m.isBlunder) return { text: '⚠️', color: '#ff4444' };
+        if (m.isDefensive) return { text: '🛡️', color: '#00f2ff' };
+        if (idx === 0) return { text: '★', color: '#ffd54a' };
+        return null;
     }
 
     // render the move% badges. called by engine.js after finalizeTopMoves.
@@ -364,16 +377,31 @@
                 const tf = sqToTransform(square, orientation);
                 if (!tf) { matched = false; break; }
 
-                const c = winPctColor(m.winPct);
+                const c = winPctColor(m.winPct, m.isBlunder, m.isDefensive);
                 badge.style.transform = `translate(${tf.xPct}%,${tf.yPct}%)`;
                 const inner = badge.firstElementChild;
                 if (inner) {
                     inner.style.background = c.bg;
                     inner.style.border = `2px solid ${c.border}`;
+                    inner.style.boxShadow = c.shadow;
                     const num = inner.querySelector('.titan-pct-num');
                     if (num) {
                         num.textContent = m.winPct + '%';
                         num.style.color = c.text;
+                    }
+                    let iconEl = inner.querySelector('.titan-pct-star');
+                    const iconInfo = getBadgeIcon(m, idx);
+                    if (iconInfo) {
+                        if (!iconEl) {
+                            iconEl = document.createElement('span');
+                            iconEl.className = 'titan-pct-star';
+                            iconEl.style.cssText = 'font-size:9px;line-height:1;margin-bottom:1px;';
+                            inner.insertBefore(iconEl, inner.firstChild);
+                        }
+                        iconEl.textContent = iconInfo.text;
+                        iconEl.style.color = iconInfo.color;
+                    } else if (iconEl) {
+                        iconEl.textContent = '';
                     }
                 }
             }
@@ -388,40 +416,38 @@
             const tf = sqToTransform(square, orientation);
             if (!tf) return;
 
-            const c = winPctColor(m.winPct);
+            const c = winPctColor(m.winPct, m.isBlunder, m.isDefensive);
             const badge = document.createElement('div');
             badge.className = 'titan-movepct-badge';
-            // NOTE: translate() percentages are relative to the element's own
-            // size (which is one square = 12.5% of the board), so xPct/yPct
-            // map 1:1 to square coordinates. matches createHighlightEl().
             badge.style.cssText =
                 `position:absolute;left:0;top:0;width:12.5%;height:12.5%;` +
                 `display:flex;align-items:center;justify-content:center;` +
                 `pointer-events:none;transform:translate(${tf.xPct}%,${tf.yPct}%);`;
-            // inner circle with the percentage
+
             const inner = document.createElement('div');
             inner.style.cssText =
-                `width:82%;height:82%;border-radius:50%;display:flex;flex-direction:column;` +
+                `width:84%;height:84%;border-radius:50%;display:flex;flex-direction:column;` +
                 `align-items:center;justify-content:center;box-sizing:border-box;` +
                 `background:${c.bg};border:2px solid ${c.border};` +
-                `box-shadow:0 2px 8px rgba(0,0,0,0.45);`;
+                `box-shadow:${c.shadow};`;
+
+            const iconInfo = getBadgeIcon(m, idx);
+            if (iconInfo) {
+                const iconEl = document.createElement('span');
+                iconEl.className = 'titan-pct-star';
+                iconEl.textContent = iconInfo.text;
+                iconEl.style.cssText = `font-size:9px;line-height:1;color:${iconInfo.color};` +
+                    `margin-bottom:1px;text-shadow:0 1px 2px rgba(0,0,0,0.8);`;
+                inner.appendChild(iconEl);
+            }
+
             const num = document.createElement('span');
             num.className = 'titan-pct-num';
             num.textContent = m.winPct + '%';
-            num.style.cssText = `font-size:13px;font-weight:800;color:${c.text};line-height:1;` +
+            num.style.cssText = `font-size:12px;font-weight:800;color:${c.text};line-height:1;` +
                 `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;` +
                 `text-shadow:0 1px 3px rgba(0,0,0,0.7);`;
             inner.appendChild(num);
-
-            if (idx === 0) {
-                // best move gets a small star above the number
-                const star = document.createElement('span');
-                star.className = 'titan-pct-star';
-                star.textContent = '★';
-                star.style.cssText = `font-size:9px;line-height:1;color:#ffd54a;` +
-                    `text-shadow:0 1px 2px rgba(0,0,0,0.8);`;
-                inner.appendChild(star);
-            }
 
             badge.appendChild(inner);
             overlay.appendChild(badge);
